@@ -11,6 +11,7 @@ import urllib
 import urllib.request
 import os
 import json
+import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -21,7 +22,7 @@ from selenium.webdriver.remote.webelement import WebElement
 class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
-    def __init__(self, site_urls, scraped_dir="./scraped-data/data", meta_file="./scraped-data/meta.json", convert_to_absolulte_url=False) -> None:
+    def __init__(self, site_urls, scraped_dir="./scraped-data/data", meta_file="./scraped-data/meta.json", convert_to_absolute_url=False) -> None:
 
         self.options = Options()
         self.options.add_argument("--headless=new") # for Chrome >= 109
@@ -38,7 +39,7 @@ class YeehaaScraper:
         self.root_urls = root_urls
 
         self.metadata = []
-        self.convert_to_absolulte_url = convert_to_absolulte_url 
+        self.convert_to_absolute_url = convert_to_absolute_url 
         # Todo: Error check
         os.system("mkdir -p " + scraped_dir)
 
@@ -102,7 +103,16 @@ class YeehaaScraper:
 
         if file_extension != '.html':
             try:
-                urllib.request.urlretrieve(urlen, file_name)
+                response = requests.get(urlen)
+                if 200 <= response.status_code <= 299:
+                    with open(file_name, 'wb') as f:
+                        f.write(response.content)
+                    return
+                else: 
+                    print(f"Failed to get {urlen} https status {response.status_code}")
+                    return
+                #string, httpmessage = urllib.request.urlretrieve(urlen, file_name)
+                #print(f"string {string} message {httpmessage}")
                 return
             except Exception as e :
                 print("urlretrieve failed " + str(e))
@@ -110,7 +120,7 @@ class YeehaaScraper:
 
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
-        if self.convert_to_absolulte_url:
+        if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
         
         with open(file_name, 'w', encoding='utf-8') as f:
