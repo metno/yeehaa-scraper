@@ -5,6 +5,7 @@
 # pylint: disable=C0103
 # pylint: disable=broad-except
 
+import sys
 import re
 import time
 import urllib
@@ -13,6 +14,7 @@ import os
 import json
 import requests
 from urllib.parse import urlparse
+import tldextract
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -22,12 +24,12 @@ from selenium.webdriver.remote.webelement import WebElement
 class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
-    def __init__(self, site_urls, scraped_dir="./scraped-data/data", meta_file="./scraped-data/meta.json", convert_to_absolute_url=False) -> None:
+    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False) -> None:
 
         self.options = Options()
         self.options.add_argument("--headless=new") # for Chrome >= 109
-        self.scraped_dir = scraped_dir
-        self.meta_file = meta_file
+        self.scraped_dir = scraped_dir + "/data"
+        self.meta_file = scraped_dir + "/" + meta_file
         self.driver = webdriver.Chrome(options=self.options)
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
@@ -41,7 +43,8 @@ class YeehaaScraper:
         self.metadata = []
         self.convert_to_absolute_url = convert_to_absolute_url 
         # Todo: Error check
-        os.system("mkdir -p " + scraped_dir)
+        os.system("mkdir -p " + self.scraped_dir)
+        sys.setrecursionlimit(10000)
 
     def navigate(self, target) -> None:
         """Navigtate""" 
@@ -148,12 +151,20 @@ class YeehaaScraper:
 
 
         for href in hrefs:
+            if href is None: 
+                continue
             try:
-                if not href.startswith(rooturl):
-                   # print("Skipping external href " + href)
-                    continue
+                #res = tldextract.extract(rooturl)
+                #domain = res.domain + "." + res.suffix
                 if href is None or href == "":
                     continue
+                if not href.startswith(rooturl):
+                   print(href + " no in (sub)domain. Skipping")
+                   continue
+                #if not domain in href:
+                #    print("Skipping external href " + href)
+                #    continue
+              
                 if  href in self.scraped_urls:
                     #print(f"{urlen} already scraped. Skipping")
                     continue
@@ -161,6 +172,7 @@ class YeehaaScraper:
                     self.scraped_urls[href] = True
                     print("Scraping " + href + " \"" + title + "\"")
                     self._scrape_site(href, rooturl)
+                    time.sleep(2) # Be nice 
             except Exception as e:
                 self.scraped_urls[href] = True
                 print("Exception on url " + href)
@@ -174,5 +186,7 @@ if __name__ == "__main__":
     url_root='https://klimaservicesenter.no/'
     #url_root='https://www.met.no/'
    
-    scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
+    #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
+    scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
+    #scraper = YeehaaScraper(['https://arkitektur.met.no/'], scraped_dir='scraped-arkitetur.met.no')
     scraper.scrape_sites()
