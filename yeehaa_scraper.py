@@ -102,7 +102,7 @@ class YeehaaScraper:
             file_extension = ".html"
 
         file_name = self.scraped_dir + "/" + "__".join(parts) + "--" + file_name + file_extension
-        print("FILE NAME " + file_name)
+        #print("FILE NAME " + file_name)
 
         if file_extension != '.html':
             try:
@@ -157,9 +157,11 @@ class YeehaaScraper:
                 #res = tldextract.extract(rooturl)
                 #domain = res.domain + "." + res.suffix
                 if href is None or href == "":
+                    self.scraped_urls[href] = True
                     continue
                 if not href.startswith(rooturl):
-                   print(href + " no in (sub)domain. Skipping")
+                   print(href + " outside domain. Skipping")
+                   self.scraped_urls[href] = True
                    continue
                 #if not domain in href:
                 #    print("Skipping external href " + href)
@@ -172,7 +174,7 @@ class YeehaaScraper:
                     self.scraped_urls[href] = True
                     print("Scraping " + href + " \"" + title + "\"")
                     self._scrape_site(href, rooturl)
-                    time.sleep(2) # Be nice 
+                    time.sleep(1) # Be nice 
             except Exception as e:
                 self.scraped_urls[href] = True
                 print("Exception on url " + href)
