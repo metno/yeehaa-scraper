@@ -8,13 +8,11 @@
 import sys
 import re
 import time
-import urllib
-import urllib.request
 import os
 import json
-import requests
 from urllib.parse import urlparse
-import tldextract
+import requests
+
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -33,7 +31,7 @@ class YeehaaScraper:
         self.driver = webdriver.Chrome(options=self.options)
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
-        
+        self.rec_depth = 0
         root_urls = []
         for s in self.site_urls: 
             parsed_uri = urlparse(s)
@@ -86,7 +84,7 @@ class YeehaaScraper:
     def _scrape_site(self, urlen, rooturl) -> None:
         """Scrape urlen"""
 
-
+        self.rec_depth = self.rec_depth + 1
         self.navigate(urlen)
         time.sleep(2) # Give time to render ..
         
@@ -151,7 +149,7 @@ class YeehaaScraper:
 
 
         for href in hrefs:
-            if href is None: 
+            if href is None:
                 continue
             try:
                 #res = tldextract.extract(rooturl)
@@ -160,9 +158,9 @@ class YeehaaScraper:
                     self.scraped_urls[href] = True
                     continue
                 if not href.startswith(rooturl):
-                   print(href + " outside domain. Skipping")
-                   self.scraped_urls[href] = True
-                   continue
+                    print(href + " outside domain. Skipping")
+                    self.scraped_urls[href] = True
+                    continue
                 #if not domain in href:
                 #    print("Skipping external href " + href)
                 #    continue
@@ -172,9 +170,9 @@ class YeehaaScraper:
                     continue
                 else:
                     self.scraped_urls[href] = True
-                    print("Scraping " + href + " \"" + title + "\"")
+                    print(f"Scraping {href } \"{title }\" ({self.rec_depth})")
                     self._scrape_site(href, rooturl)
-                    time.sleep(1) # Be nice 
+                    time.sleep(1) # Be nice
             except Exception as e:
                 self.scraped_urls[href] = True
                 print("Exception on url " + href)
@@ -183,11 +181,12 @@ class YeehaaScraper:
                 else:
                     print(e)
                 continue
+        self.rec_depth = self.rec_depth -1
 
 if __name__ == "__main__":
     url_root='https://klimaservicesenter.no/'
     #url_root='https://www.met.no/'
-   
+
     #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
     scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
     #scraper = YeehaaScraper(['https://arkitektur.met.no/'], scraped_dir='scraped-arkitetur.met.no')
