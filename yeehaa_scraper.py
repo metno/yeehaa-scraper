@@ -188,6 +188,6 @@ if __name__ == "__main__":
     #url_root='https://www.met.no/'
 
     #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
-    scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
-    #scraper = YeehaaScraper(['https://arkitektur.met.no/'], scraped_dir='scraped-arkitetur.met.no')
+    #scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
+    scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
     scraper.scrape_sites()
