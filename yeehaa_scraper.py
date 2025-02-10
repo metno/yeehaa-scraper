@@ -89,16 +89,14 @@ class YeehaaScraper:
         self.rec_depth = self.rec_depth + 1
         self.navigate(urlen)
         time.sleep(2) # Give time to render ..
-        #res = tldextract.extract(rooturl)
+     
         o = urlparse(urlen)
-        #domain = res.domain + "." + res.suffix
+     
         if o.path.endswith(".html"):
             tmpf = o.path.replace(".html", o.fragment + ".html")
         else: 
             tmpf = o.path
-        #tmpf = urlen.replace("https://","")
-        #tmpf = tmpf.replace("/#","")
-        #tmpf = tmpf.replace("#","")
+
         head, _, tail = tmpf.partition('#')
         if tail != "":
             tmpf = head + "_" + tail
