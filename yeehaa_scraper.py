@@ -12,6 +12,8 @@ import os
 import json
 from urllib.parse import urlparse
 import requests
+import tldextract
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -62,15 +64,15 @@ class YeehaaScraper:
 
 
     def srcrepl(self, absolute_url, content):
-        
+
         def _srcrepl(match):
             "Return the file contents with paths replaced"
             return "<" + match.group(1) + match.group(2) + "=" + "\"" + absolute_url + match.group(3) + match.group(4) + "\"" + ">"
-        
+
         p = re.compile(r"<(.*?)(src|href)=\"(?!http)(.*?)\"(.*?)>")
         content = p.sub(_srcrepl, content)
         return content
-    
+
     def scrape_sites(self) -> None:
         cnt = 0
         for site in self.site_urls:
@@ -83,14 +85,25 @@ class YeehaaScraper:
 
     def _scrape_site(self, urlen, rooturl) -> None:
         """Scrape urlen"""
-
+        print("Scraping " + urlen)
         self.rec_depth = self.rec_depth + 1
         self.navigate(urlen)
         time.sleep(2) # Give time to render ..
-        
-        tmpf = urlen.replace("https://","")
-        tmpf = tmpf.replace("/#","")
-        tmpf = tmpf.replace("#","")
+        #res = tldextract.extract(rooturl)
+        o = urlparse(urlen)
+        #domain = res.domain + "." + res.suffix
+        if o.path.endswith(".html"):
+            tmpf = o.path.replace(".html", o.fragment + ".html")
+        else: 
+            tmpf = o.path
+        #tmpf = urlen.replace("https://","")
+        #tmpf = tmpf.replace("/#","")
+        #tmpf = tmpf.replace("#","")
+        head, _, tail = tmpf.partition('#')
+        if tail != "":
+            tmpf = head + "_" + tail
+        else:
+            tmpf = head
         parts = tmpf.split('/')
         file_name = parts[-1]
         parts.pop()
@@ -99,31 +112,32 @@ class YeehaaScraper:
         if file_extension == "":
             file_extension = ".html"
 
-        file_name = self.scraped_dir + "/" + "__".join(parts) + "--" + file_name + file_extension
-        #print("FILE NAME " + file_name)
-
+        file_name = self.scraped_dir + "/" + o.netloc + "__".join(parts) + "--" + file_name + file_extension
+        print("TO " + file_name)
+        print("")
         if file_extension != '.html':
             try:
-                response = requests.get(urlen)
+                response = requests.get(urlen, timeout=None)
                 if 200 <= response.status_code <= 299:
                     with open(file_name, 'wb') as f:
                         f.write(response.content)
-                    return
-                else: 
+                    elm = {}
+                    elm['title'] = ""
+                    #elm['links'] = hrefs
+                    elm['url'] = urlen
+                    elm['file_name'] = file_name
+                    self.metadata.append(elm)
+                else:
                     print(f"Failed to get {urlen} https status {response.status_code}")
-                    return
-                #string, httpmessage = urllib.request.urlretrieve(urlen, file_name)
-                #print(f"string {string} message {httpmessage}")
-                return
             except Exception as e :
                 print("urlretrieve failed " + str(e))
-                return
+            return
 
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
         if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
-        
+
         with open(file_name, 'w', encoding='utf-8') as f:
             f.write(html_content)
         #print(html_content)
@@ -142,7 +156,7 @@ class YeehaaScraper:
 
         elm = {}
         elm['title'] = title
-        elm['links'] = hrefs
+        #elm['links'] = hrefs
         elm['url'] = urlen
         elm['file_name'] = file_name
         self.metadata.append(elm)
@@ -152,8 +166,6 @@ class YeehaaScraper:
             if href is None:
                 continue
             try:
-                #res = tldextract.extract(rooturl)
-                #domain = res.domain + "." + res.suffix
                 if href is None or href == "":
                     self.scraped_urls[href] = True
                     continue
@@ -161,16 +173,13 @@ class YeehaaScraper:
                     print(href + " outside domain. Skipping")
                     self.scraped_urls[href] = True
                     continue
-                #if not domain in href:
-                #    print("Skipping external href " + href)
-                #    continue
-              
+
                 if  href in self.scraped_urls:
                     #print(f"{urlen} already scraped. Skipping")
                     continue
                 else:
                     self.scraped_urls[href] = True
-                    print(f"Scraping {href } \"{title }\" ({self.rec_depth})")
+                    #print(f"Scraping {href } \"{title }\" to {file_name} ({self.rec_depth})")
                     self._scrape_site(href, rooturl)
                     time.sleep(1) # Be nice
             except Exception as e:
@@ -184,10 +193,9 @@ class YeehaaScraper:
         self.rec_depth = self.rec_depth -1
 
 if __name__ == "__main__":
-    url_root='https://klimaservicesenter.no/'
-    #url_root='https://www.met.no/'
 
     #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
     #scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
-    scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
+    #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
+    scraper = YeehaaScraper(['https://sd.brukerdok.met.no/', 'https://klimaservicesenter.no/', 'https://www.met.no/', 'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-yeehaa-02-08')
     scraper.scrape_sites()
