@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 import requests
 import tldextract
 from urllib.parse import urlparse
+import hashlib
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -34,6 +35,7 @@ class YeehaaScraper:
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
         self.rec_depth = 0
+        self.content_hashes = {}
         root_urls = []
         for s in self.site_urls: 
             parsed_uri = urlparse(s)
@@ -133,6 +135,13 @@ class YeehaaScraper:
 
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
+        hash1 = hashlib.md5(html_content.encode('utf-8')).hexdigest()
+        if hash1 in self.content_hashes: # Check if content already added . (Avoid duplicates in vector databasae)                                                                                                     
+            print(f"Skipping duplicate content {urlen} {hash1} {self.content_hashes[hash1]}")
+            self.scraped_urls[urlen] = True
+            return
+        self.content_hashes[hash1] = True
+
         if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
 
@@ -195,5 +204,10 @@ if __name__ == "__main__":
     #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
     #scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
     #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
-    scraper = YeehaaScraper(['https://sd.brukerdok.met.no/', 'https://klimaservicesenter.no/', 'https://www.met.no/', 'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-yeehaa-02-08')
+    scraper = YeehaaScraper(['https://sd.brukerdok.met.no/', 
+                            'https://klimaservicesenter.no/', 
+                            'https://www.met.no/', 
+                            'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], 
+                            scraped_dir='scraped-it-yeehaa-02-11')
     scraper.scrape_sites()
+    print("Done")
