@@ -206,11 +206,11 @@ if __name__ == "__main__":
     #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
 
     scraper = YeehaaScraper([
-        #'https://sd.brukerdok.met.no/', 
+        'https://sd.brukerdok.met.no/', 
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
         'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], 
-        scraped_dir='scraped-it-pages-04-03')
+        scraped_dir='scraped-it-pages-and-sd-brukerdok-04-03')
 
 
     # Requires auth
