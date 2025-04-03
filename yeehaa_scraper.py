@@ -112,14 +112,14 @@ class YeehaaScraper:
         if file_extension == "":
             file_extension = ".html"
 
-        file_name = self.scraped_dir + "/" + o.netloc + "__".join(parts) + "--" + file_name + file_extension
+        file_name =  o.netloc + "__".join(parts) + "--" + file_name + file_extension
         print("TO " + file_name)
         print("")
         if file_extension != '.html':
             try:
                 response = requests.get(urlen, timeout=None)
                 if 200 <= response.status_code <= 299:
-                    with open(file_name, 'wb') as f:
+                    with open(self.scraped_dir + "/" + file_name, 'wb') as f:
                         f.write(response.content)
                     elm = {}
                     elm['title'] = ""
@@ -145,7 +145,7 @@ class YeehaaScraper:
         if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
 
-        with open(file_name, 'w', encoding='utf-8') as f:
+        with open(self.scraped_dir + "/" + file_name, 'w', encoding='utf-8') as f:
             f.write(html_content)
         #print(html_content)
 
@@ -206,11 +206,11 @@ if __name__ == "__main__":
     #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
 
     scraper = YeehaaScraper([
-        'https://sd.brukerdok.met.no/', 
+        #'https://sd.brukerdok.met.no/', 
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
-        'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], 
-        scraped_dir='scraped-it-pages-and-sd-brukerdok-04-03')
+        'https://it.pages.met.no/infra/brukerdokumentasjon'], 
+        scraped_dir='scraped-it-pages')
 
 
     # Requires auth
