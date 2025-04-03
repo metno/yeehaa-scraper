@@ -81,7 +81,7 @@ class YeehaaScraper:
             self._scrape_site(site, self.root_urls[cnt])
             cnt += 1
 
-        with open(self.meta_file, 'w+') as fp:
+        with open(self.meta_file, 'w+', encoding='utf-8') as fp:
             json.dump(self.metadata, fp, indent=4)
 
 
@@ -204,10 +204,17 @@ if __name__ == "__main__":
     #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
     #scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
     #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
-    scraper = YeehaaScraper(['https://sd.brukerdok.met.no/', 
-                            'https://klimaservicesenter.no/', 
-                            'https://www.met.no/', 
-                            'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], 
-                            scraped_dir='scraped-it-yeehaa-02-11')
+
+    scraper = YeehaaScraper([
+        #'https://sd.brukerdok.met.no/', 
+        #'https://klimaservicesenter.no/', 
+        #'https://www.met.no/', 
+        'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], 
+        scraped_dir='scraped-it-pages-04-03')
+
+
+    # Requires auth
+    #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'],scraped_dir='scraped-it.pages.met.no')
+    #scraper = YeehaaScraper(['https://dokit.met.no'],scraped_dir='scraped-dokit.met.no')
     scraper.scrape_sites()
     print("Done")
