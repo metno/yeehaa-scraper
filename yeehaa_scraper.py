@@ -25,12 +25,14 @@ from selenium.webdriver.remote.webelement import WebElement
 class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
-    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False) -> None:
+    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False, skip_patterns = []) -> None:
 
         self.options = Options()
         self.options.add_argument("--headless=new") # for Chrome >= 109
         self.scraped_dir = scraped_dir + "/data"
         self.meta_file = scraped_dir + "/" + meta_file
+        self.skip_patterns = skip_patterns
+
         self.driver = webdriver.Chrome(options=self.options)
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
@@ -86,6 +88,11 @@ class YeehaaScraper:
 
 
     def _scrape_site(self, urlen, rooturl) -> None:
+
+        for pattern in self.skip_patterns: # TODO: Use regex
+            if pattern in urlen:
+                print(f"{urlen} in skiplist. Skipping")
+                return
         """Scrape urlen"""
         print("Scraping " + urlen)
         self.rec_depth = self.rec_depth + 1
@@ -201,20 +208,13 @@ class YeehaaScraper:
 
 if __name__ == "__main__":
 
-    #scraper = YeehaaScraper(['https://klimaservicesenter.no/', 'https://www.met.no/'])
-    #scraper = YeehaaScraper(['https://dokit.met.no/'], scraped_dir='scraped-dokit')
-    #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'], scraped_dir='scraped-it-pages')
-
     scraper = YeehaaScraper([
         #'https://sd.brukerdok.met.no/', 
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
         'https://it.pages.met.no/infra/brukerdokumentasjon'], 
-        scraped_dir='scraped-it-pages')
+        skip_patterns=['dokit-dump'],
+        scraped_dir='scraped-it-pages-2025-04-04-1')
 
-
-    # Requires auth
-    #scraper = YeehaaScraper(['https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html#gateways-data-room-b/'],scraped_dir='scraped-it.pages.met.no')
-    #scraper = YeehaaScraper(['https://dokit.met.no'],scraped_dir='scraped-dokit.met.no')
     scraper.scrape_sites()
     print("Done")
