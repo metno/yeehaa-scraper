@@ -21,19 +21,28 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver import FirefoxOptions
 
 class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
     def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False, skip_patterns = []) -> None:
 
-        self.options = Options()
-        self.options.add_argument("--headless=new") # for Chrome >= 109
+
+        
         self.scraped_dir = scraped_dir + "/data"
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
+        
+        self.options = FirefoxOptions()
+        self.options.add_argument("--headless")
+        self.driver = webdriver.Firefox(options=self.options)
 
-        self.driver = webdriver.Chrome(options=self.options)
+        #self.options = Options()
+        #self.options.add_argument("--headless=new") # for Chrome >= 109
+        #self.driver = webdriver.Chrome(options=self.options)
+
+
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
         self.rec_depth = 0
