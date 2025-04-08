@@ -213,8 +213,8 @@ if __name__ == "__main__":
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
         'https://it.pages.met.no/infra/brukerdokumentasjon'], 
-        skip_patterns=['dokit-dump'],
-        scraped_dir='scraped-it-pages-2025-04-04-1')
+        skip_patterns=['dokit-dump', '.rst.txt'],
+        scraped_dir='scraped-it-pages-2025-04-04-2')
 
     scraper.scrape_sites()
     print("Done")
