@@ -22,7 +22,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver import FirefoxOptions
+from webdriver_manager.chrome import ChromeDriverManager
 
+from selenium.webdriver.chrome.service import Service
 class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
@@ -34,13 +36,18 @@ class YeehaaScraper:
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
         
-        self.options = FirefoxOptions()
-        self.options.add_argument("--headless")
-        self.driver = webdriver.Firefox(options=self.options)
+        #self.options = FirefoxOptions()
+        #self.options.add_argument("--headless")
+        #self.driver = webdriver.Firefox(options=self.options)
 
-        #self.options = Options()
-        #self.options.add_argument("--headless=new") # for Chrome >= 109
-        #self.driver = webdriver.Chrome(options=self.options)
+        self.options = Options()
+
+        self.options.add_argument("--no-sandbox");
+        self.options.add_argument("--no-sandbox");
+        self.options.add_argument("--headless=new") # for Chrome >= 109        
+        self.options.add_argument("--disable-dev-shm-usage");
+        ser=Service("/snap/bin/chromium.chromedriver")
+        self.driver = webdriver.Chrome(service=ser, options=self.options)
 
 
         self.scraped_urls = {}
