@@ -29,8 +29,6 @@ class YeehaaScraper:
     """Recursive web scraper with javascript rendering support""" 
 
     def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False, skip_patterns = []) -> None:
-
-
         
         self.scraped_dir = scraped_dir + "/data"
         self.meta_file = scraped_dir + "/" + meta_file
@@ -41,8 +39,6 @@ class YeehaaScraper:
         #self.driver = webdriver.Firefox(options=self.options)
 
         self.options = Options()
-
-        self.options.add_argument("--no-sandbox");
         self.options.add_argument("--no-sandbox");
         self.options.add_argument("--headless=new") # for Chrome >= 109        
         self.options.add_argument("--disable-dev-shm-usage");
@@ -228,9 +224,10 @@ if __name__ == "__main__":
         #'https://sd.brukerdok.met.no/', 
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
-        'https://it.pages.met.no/infra/brukerdokumentasjon'], 
+        'https://it.pages.met.no/infra/brukerdokumentasjon'
+    ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-it-pages-2025-04-04-2')
+        scraped_dir='scraped-it-pages-2025-06-04')
 
     scraper.scrape_sites()
     print("Done")
