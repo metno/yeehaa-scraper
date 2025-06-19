@@ -235,10 +235,15 @@ if __name__ == "__main__":
         #'https://sd.brukerdok.met.no/', 
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
-        'https://it.pages.met.no/infra/brukerdokumentasjon'
+        #'https://it.pages.met.no/infra/brukerdokumentasjon'
+        'https://kubernetes.io/',
+        'https://docs.k8s.met.no/',
+        
+
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-it-pages-2025-06-11-4')
+        scraped_dir='scraped-k8s-pages-2025-06-19')
+
 
     scraper.scrape_sites()
     print("Done")
