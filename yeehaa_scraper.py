@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-k8s-pages-2025-06-19')
+        scraped_dir='scraped-k8s-met+official-2025-06-19')
 
 
     scraper.scrape_sites()
