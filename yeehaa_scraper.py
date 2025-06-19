@@ -112,22 +112,30 @@ class YeehaaScraper:
         time.sleep(2) # Give time to render ..
      
         o = urlparse(urlen)
-     
-        if o.path.endswith(".html"):
-            tmpf = o.path.replace(".html", o.fragment + ".html")
-        else: 
-            tmpf = o.path
-
+        urlen = o._replace(fragment="").geturl()
+        
+        #if o.path.endswith(".html"):
+        #    tmpf = o.path.replace(".html", o.fragment + ".html")            
+        #else: 
+        #    tmpf = o.path
+        tmpf = o.path
+        
         head, _, tail = tmpf.partition('#')
-        if tail != "":
-            tmpf = head + "_" + tail
-        else:
-            tmpf = head
+        #if tail != "":
+        #    tmpf = head + "_" + tail
+        #else:
+        #    tmpf = head
+        tmpf = head    
+       
         parts = tmpf.split('/')
         file_name = parts[-1]
         parts.pop()
 
         file_name, file_extension = os.path.splitext(file_name)
+        print("EXTN: "+ file_extension)
+        if file_extension == ".png" or  file_extension == ".jpg" or  file_extension == ".jpeg" or  file_extension == ".gif":
+            print("Skippint image "+ urlen)
+            return
         if file_extension == "":
             file_extension = ".html"
 
@@ -169,6 +177,7 @@ class YeehaaScraper:
         #print(html_content)
 
         soup = BeautifulSoup(html_content, 'html.parser')
+        
         #print(soup.prettify())
         title = ""
         if soup.title:
@@ -192,6 +201,8 @@ class YeehaaScraper:
             if href is None:
                 continue
             try:
+                o = urlparse(href)
+                href = o._replace(fragment="").geturl()
                 if href is None or href == "":
                     self.scraped_urls[href] = True
                     continue
@@ -227,7 +238,7 @@ if __name__ == "__main__":
         'https://it.pages.met.no/infra/brukerdokumentasjon'
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-it-pages-2025-06-04')
+        scraped_dir='scraped-it-pages-2025-06-11-4')
 
     scraper.scrape_sites()
     print("Done")
