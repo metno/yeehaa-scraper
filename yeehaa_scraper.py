@@ -195,8 +195,8 @@ class YeehaaScraper:
         elm['url'] = urlen
         elm['file_name'] = file_name
         self.metadata.append(elm)
-
-
+        ### Scrape one page 
+        #return
         for href in hrefs:
             if href is None:
                 continue
@@ -236,13 +236,15 @@ if __name__ == "__main__":
         #'https://klimaservicesenter.no/', 
         #'https://www.met.no/', 
         #'https://it.pages.met.no/infra/brukerdokumentasjon'
-        'https://kubernetes.io/',
-        'https://docs.k8s.met.no/',
+        #'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
+        'https://sd.brukerdok.met.no/'
+        ##'https://kubernetes.io/',
+        #'https://docs.k8s.met.no/',
         
 
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-k8s-met+official-2025-06-19')
+        scraped_dir='scraped-sd-brukerdocs-2025-06-23')
 
 
     scraper.scrape_sites()
