@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Recursive web site scraper with javascript rendering support"""
+"""Recursive web site scraper with javascript rendering support and 2FA"""
 # pylint: disable=line-too-long
 # pylint: disable=C0103
 # pylint: disable=broad-except
@@ -10,11 +10,13 @@ import re
 import time
 import os
 import json
+import getpass
 from urllib.parse import urlparse
 import requests
 import tldextract
 from urllib.parse import urlparse
 import hashlib
+import pyotp
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -23,16 +25,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver import FirefoxOptions
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 from selenium.webdriver.chrome.service import Service
-class YeehaaScraper:
-    """Recursive web scraper with javascript rendering support""" 
 
-    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", convert_to_absolute_url=False, skip_patterns = []) -> None:
+class YeehaaScraper:
+    """Recursive web scraper with javascript rendering support and 2FA""" 
+
+    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", 
+                 convert_to_absolute_url=False, skip_patterns=[], 
+                 auth_config=None) -> None:
         
         self.scraped_dir = scraped_dir + "/data"
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
+        self.auth_config = auth_config or {}
         
         #self.options = FirefoxOptions()
         #self.options.add_argument("--headless")
@@ -40,11 +49,11 @@ class YeehaaScraper:
 
         self.options = Options()
         self.options.add_argument("--no-sandbox");
-        self.options.add_argument("--headless=new") # for Chrome >= 109        
+        # Comment out headless mode for 2FA login (you need to see the page)
+        # self.options.add_argument("--headless=new") # for Chrome >= 109        
         self.options.add_argument("--disable-dev-shm-usage");
         ser=Service("/snap/bin/chromium.chromedriver")
         self.driver = webdriver.Chrome(service=ser, options=self.options)
-
 
         self.scraped_urls = {}
         self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
@@ -62,6 +71,86 @@ class YeehaaScraper:
         os.system("mkdir -p " + self.scraped_dir)
         sys.setrecursionlimit(10000)
 
+    def authenticate_2fa(self, login_url, username_selector, password_selector, 
+                        totp_selector, submit_selector, totp_secret=None):
+        """Handle 2FA authentication"""
+        print("Starting 2FA authentication...")
+        
+        # Navigate to login page
+        self.driver.get(login_url)
+        time.sleep(3)
+        
+        # Get credentials
+        if not self.auth_config.get('username'):
+            username = input("Enter username: ")
+        else:
+            username = self.auth_config['username']
+            
+        if not self.auth_config.get('password'):
+            password = getpass.getpass("Enter password: ")
+        else:
+            password = self.auth_config['password']
+        
+        # Fill in username and password
+        try:
+            username_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, username_selector))
+            )
+            username_field.send_keys(username)
+            
+            password_field = self.driver.find_element(By.CSS_SELECTOR, password_selector)
+            password_field.send_keys(password)
+            
+            # Submit login form
+            submit_button = self.driver.find_element(By.CSS_SELECTOR, submit_selector)
+            submit_button.click()
+            
+            time.sleep(3)  # Wait for 2FA page to load
+            
+            # Handle 2FA
+            if totp_secret:
+                # Generate TOTP code
+                totp = pyotp.TOTP(totp_secret)
+                totp_code = totp.now()
+                print(f"Generated TOTP code: {totp_code}")
+            else:
+                # Manual TOTP entry
+                totp_code = input("Enter the 6-digit code from Google Authenticator: ")
+            
+            # Enter TOTP code
+            totp_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, totp_selector))
+            )
+            totp_field.send_keys(totp_code)
+            
+            # Submit 2FA form
+            submit_2fa = self.driver.find_element(By.CSS_SELECTOR, submit_selector)
+            submit_2fa.click()
+            
+            time.sleep(5)  # Wait for authentication to complete
+            
+            print("2FA authentication completed successfully!")
+            return True
+            
+        except TimeoutException:
+            print("Authentication failed - timeout waiting for elements")
+            return False
+        except Exception as e:
+            print(f"Authentication failed: {str(e)}")
+            return False
+
+    def authenticate_interactive(self):
+        """Interactive authentication - user handles login manually"""
+        print("Please complete the authentication process manually...")
+        print("The browser window will open. Please:")
+        print("1. Log in with your username and password")
+        print("2. Complete the 2FA process with Google Authenticator")
+        print("3. Once logged in successfully, press Enter here to continue...")
+        
+        input("Press Enter once you have completed the login process...")
+        print("Continuing with scraping...")
+        return True
+
     def navigate(self, target) -> None:
         """Navigtate""" 
         self.driver.get(target)
@@ -78,7 +167,6 @@ class YeehaaScraper:
         """Extract all elements"""
         return self.driver.find_elements(selector_type, selector)
 
-
     def srcrepl(self, absolute_url, content):
 
         def _srcrepl(match):
@@ -90,6 +178,26 @@ class YeehaaScraper:
         return content
 
     def scrape_sites(self) -> None:
+        # Perform authentication if configured
+        if self.auth_config.get('enabled', False):
+            if self.auth_config.get('method') == 'interactive':
+                # Navigate to the first site for interactive login
+                self.driver.get(self.site_urls[0])
+                if not self.authenticate_interactive():
+                    print("Authentication failed. Exiting...")
+                    return
+            elif self.auth_config.get('method') == 'automatic':
+                if not self.authenticate_2fa(
+                    self.auth_config['login_url'],
+                    self.auth_config['username_selector'],
+                    self.auth_config['password_selector'],
+                    self.auth_config['totp_selector'],
+                    self.auth_config['submit_selector'],
+                    self.auth_config.get('totp_secret')
+                ):
+                    print("Automatic authentication failed. Exiting...")
+                    return
+        
         cnt = 0
         for site in self.site_urls:
             self._scrape_site(site, self.root_urls[cnt])
@@ -97,7 +205,6 @@ class YeehaaScraper:
 
         with open(self.meta_file, 'w+', encoding='utf-8') as fp:
             json.dump(self.metadata, fp, indent=4)
-
 
     def _scrape_site(self, urlen, rooturl) -> None:
 
@@ -231,21 +338,36 @@ class YeehaaScraper:
 
 if __name__ == "__main__":
 
-    scraper = YeehaaScraper([
-        #'https://sd.brukerdok.met.no/', 
-        #'https://klimaservicesenter.no/', 
-        #'https://www.met.no/', 
-        #'https://it.pages.met.no/infra/brukerdokumentasjon'
-        #'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
-        'https://sd.brukerdok.met.no/'
-        ##'https://kubernetes.io/',
-        #'https://docs.k8s.met.no/',
-        
+    # Configuration for 2FA authentication
+    # Method 1: Interactive (recommended for first time)
+    auth_config_interactive = {
+        'enabled': True,
+        'method': 'interactive'  # User handles login manually
+    }
+    
+    # Method 2: Automatic (requires knowing the form selectors)
+    # You'll need to inspect the login page to get the correct selectors
+    auth_config_automatic = {
+        'enabled': True,
+        'method': 'automatic',
+        'login_url': 'https://systems-overview.pages.met.no/systems-overview/login',  # Update with actual login URL
+        'username_selector': 'input[name="username"]',  # Update with actual selector
+        'password_selector': 'input[name="password"]',  # Update with actual selector  
+        'totp_selector': 'input[name="totp"]',  # Update with actual selector
+        'submit_selector': 'button[type="submit"]',  # Update with actual selector
+        'username': '',  # Optional: set username here
+        'password': '',  # Optional: set password here
+        'totp_secret': ''  # Optional: your TOTP secret key from Google Authenticator setup
+    }
 
+    scraper = YeehaaScraper([
+        'https://systems-overview.pages.met.no/systems-overview/'
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-sd-brukerdocs-2025-06-23')
-
+        scraped_dir='scraped-systems-overview-2025-01-25',
+        auth_config=auth_config_interactive  # Use interactive method
+    )
 
     scraper.scrape_sites()
     print("Done")
+    
