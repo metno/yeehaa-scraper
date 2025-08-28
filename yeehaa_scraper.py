@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Recursive web site scraper with javascript rendering support and 2FA"""
+"""Recursive web site scraper with javascript rendering support and 2FA authentication"""
 # pylint: disable=line-too-long
 # pylint: disable=C0103
 # pylint: disable=broad-except
@@ -14,9 +14,11 @@ import getpass
 from urllib.parse import urlparse
 import requests
 import tldextract
-from urllib.parse import urlparse
 import hashlib
 import pyotp
+import argparse
+from datetime import datetime
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -31,34 +33,57 @@ from selenium.common.exceptions import TimeoutException
 
 from selenium.webdriver.chrome.service import Service
 
-class YeehaaScraper:
-    """Recursive web scraper with javascript rendering support and 2FA""" 
+def create_output_dir(url):
+    """Create output directory name from URL host and current datetime."""
+    parsed_url = urlparse(url)
+    host = parsed_url.netloc or parsed_url.path.split('/')[0]
+    # Remove 'www.' if present and clean up any invalid characters
+    host = host.replace('www.', '').replace(':', '_').replace('/', '_')
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M")
+    return f"{host}_{timestamp}"
 
-    def __init__(self, site_urls, scraped_dir="./scraped-data", meta_file="meta.json", 
+
+class YeehaaScraper:
+    """Recursive web scraper with javascript rendering support and 2FA authentication""" 
+
+    def __init__(self, site_urls, one_page_only=False, scraped_dir="./scraped-data", meta_file="meta.json", 
                  convert_to_absolute_url=False, skip_patterns=[], 
-                 auth_config=None) -> None:
+                 username=None, password=None, totp_secret=None, 
+                 login_url=None, username_field="username", password_field="password", 
+                 totp_field="totp", submit_button_selector="input[type='submit']") -> None:
         
         self.scraped_dir = scraped_dir + "/data"
+        self.one_page_only = one_page_only
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
-        self.auth_config = auth_config or {}
+        
+        # Authentication parameters
+        self.username = username
+        self.password = password
+        self.totp_secret = totp_secret
+        self.login_url = login_url
+        self.username_field = username_field
+        self.password_field = password_field
+        self.totp_field = totp_field
+        self.submit_button_selector = submit_button_selector
         
         #self.options = FirefoxOptions()
         #self.options.add_argument("--headless")
         #self.driver = webdriver.Firefox(options=self.options)
 
         self.options = Options()
-        self.options.add_argument("--no-sandbox");
-        # Comment out headless mode for 2FA login (you need to see the page)
-        # self.options.add_argument("--headless=new") # for Chrome >= 109        
-        self.options.add_argument("--disable-dev-shm-usage");
+        self.options.add_argument("--no-sandbox")
+        self.options.add_argument("--headless=new") # for Chrome >= 109        
+        self.options.add_argument("--disable-dev-shm-usage")
         ser=Service("/snap/bin/chromium.chromedriver")
         self.driver = webdriver.Chrome(service=ser, options=self.options)
 
         self.scraped_urls = {}
-        self.site_urls = site_urls  # TODO: Extract root url to use when convert_to_absolulte_url=True in case sit_url is not to level
+        self.site_urls = site_urls
         self.rec_depth = 0
         self.content_hashes = {}
+        self.authenticated = False
+        
         root_urls = []
         for s in self.site_urls: 
             parsed_uri = urlparse(s)
@@ -71,88 +96,258 @@ class YeehaaScraper:
         os.system("mkdir -p " + self.scraped_dir)
         sys.setrecursionlimit(10000)
 
-    def authenticate_2fa(self, login_url, username_selector, password_selector, 
-                        totp_selector, submit_selector, totp_secret=None):
-        """Handle 2FA authentication"""
-        print("Starting 2FA authentication...")
+    def debug_page_elements(self):
+        """Debug helper to inspect page elements"""
+        print(f"Current URL: {self.driver.current_url}")
+        print(f"Page title: {self.driver.title}")
         
-        # Navigate to login page
-        self.driver.get(login_url)
-        time.sleep(3)
+        # Find all input fields
+        inputs = self.driver.find_elements(By.TAG_NAME, 'input')
+        print(f"Found {len(inputs)} input elements:")
+        for i, inp in enumerate(inputs):
+            input_type = inp.get_attribute('type') or 'text'
+            input_name = inp.get_attribute('name') or 'unnamed'
+            input_id = inp.get_attribute('id') or 'no-id'
+            input_placeholder = inp.get_attribute('placeholder') or 'no-placeholder'
+            print(f"  Input {i}: type='{input_type}', name='{input_name}', id='{input_id}', placeholder='{input_placeholder}'")
         
-        # Get credentials
-        if not self.auth_config.get('username'):
-            username = input("Enter username: ")
-        else:
-            username = self.auth_config['username']
-            
-        if not self.auth_config.get('password'):
-            password = getpass.getpass("Enter password: ")
-        else:
-            password = self.auth_config['password']
-        
-        # Fill in username and password
-        try:
-            username_field = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, username_selector))
-            )
-            username_field.send_keys(username)
-            
-            password_field = self.driver.find_element(By.CSS_SELECTOR, password_selector)
-            password_field.send_keys(password)
-            
-            # Submit login form
-            submit_button = self.driver.find_element(By.CSS_SELECTOR, submit_selector)
-            submit_button.click()
-            
-            time.sleep(3)  # Wait for 2FA page to load
-            
-            # Handle 2FA
-            if totp_secret:
-                # Generate TOTP code
-                totp = pyotp.TOTP(totp_secret)
-                totp_code = totp.now()
-                print(f"Generated TOTP code: {totp_code}")
-            else:
-                # Manual TOTP entry
-                totp_code = input("Enter the 6-digit code from Google Authenticator: ")
-            
-            # Enter TOTP code
-            totp_field = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, totp_selector))
-            )
-            totp_field.send_keys(totp_code)
-            
-            # Submit 2FA form
-            submit_2fa = self.driver.find_element(By.CSS_SELECTOR, submit_selector)
-            submit_2fa.click()
-            
-            time.sleep(5)  # Wait for authentication to complete
-            
-            print("2FA authentication completed successfully!")
+        # Find all buttons
+        buttons = self.driver.find_elements(By.TAG_NAME, 'button')
+        submit_inputs = self.driver.find_elements(By.CSS_SELECTOR, 'input[type="submit"]')
+        all_buttons = buttons + submit_inputs
+        print(f"Found {len(all_buttons)} button/submit elements:")
+        for i, btn in enumerate(all_buttons):
+            btn_text = btn.text or btn.get_attribute('value') or 'no-text'
+            btn_type = btn.get_attribute('type') or 'button'
+            btn_class = btn.get_attribute('class') or 'no-class'
+            print(f"  Button {i}: text='{btn_text}', type='{btn_type}', class='{btn_class}'")
+
+    def authenticate(self):
+        """Perform 2FA authentication with better error handling and debugging"""
+        if not self.login_url:
+            print("No login URL provided, skipping authentication")
             return True
             
-        except TimeoutException:
-            print("Authentication failed - timeout waiting for elements")
+        if not all([self.username, self.password, self.totp_secret]):
+            print("Missing authentication credentials")
+            return False
+            
+        try:
+            print("Starting authentication process...")
+            self.driver.get(self.login_url)
+            time.sleep(3)  # Wait for page to load
+            
+            # Debug: Show what we found on the page
+            print("=== PAGE DEBUG INFO ===")
+            self.debug_page_elements()
+            print("=====================")
+            
+            wait = WebDriverWait(self.driver, 15)
+            
+            # Try multiple strategies to find username field
+            username_input = None
+            username_selectors = [
+                (By.NAME, self.username_field),
+                (By.ID, self.username_field), 
+                (By.ID, 'username'),
+                (By.ID, 'email'),
+                (By.NAME, 'email'),
+                (By.CSS_SELECTOR, 'input[type="text"]'),
+                (By.CSS_SELECTOR, 'input[type="email"]'),
+                (By.XPATH, '//input[@placeholder="Username" or @placeholder="Email" or @placeholder="username" or @placeholder="email"]')
+            ]
+            
+            for selector_type, selector in username_selectors:
+                try:
+                    username_input = wait.until(EC.presence_of_element_located((selector_type, selector)))
+                    print(f"Found username field using: {selector_type}, {selector}")
+                    break
+                except TimeoutException:
+                    continue
+            
+            if not username_input:
+                print("Could not find username field")
+                return False
+                
+            username_input.clear()
+            username_input.send_keys(self.username)
+            print("Entered username")
+            
+            # Try multiple strategies to find password field
+            password_input = None
+            password_selectors = [
+                (By.NAME, self.password_field),
+                (By.ID, self.password_field),
+                (By.ID, 'password'),
+                (By.NAME, 'password'),
+                (By.CSS_SELECTOR, 'input[type="password"]'),
+                (By.XPATH, '//input[@placeholder="Password" or @placeholder="password"]')
+            ]
+            
+            for selector_type, selector in password_selectors:
+                try:
+                    password_input = self.driver.find_element(selector_type, selector)
+                    print(f"Found password field using: {selector_type}, {selector}")
+                    break
+                except:
+                    continue
+                    
+            if not password_input:
+                print("Could not find password field")
+                return False
+                
+            password_input.clear()
+            password_input.send_keys(self.password)
+            print("Entered password")
+            
+            # Generate TOTP code
+            totp = pyotp.TOTP(self.totp_secret)
+            totp_code = totp.now()
+            print(f"Generated TOTP code: {totp_code}")
+            
+            # Look for TOTP field - try multiple strategies
+            totp_input = None
+            totp_selectors = [
+                (By.NAME, self.totp_field),
+                (By.ID, self.totp_field),
+                (By.NAME, 'totp'),
+                (By.NAME, 'code'),
+                (By.NAME, 'token'),
+                (By.NAME, 'authenticator_code'),
+                (By.NAME, 'verification_code'),
+                (By.ID, 'totp'),
+                (By.ID, 'code'),
+                (By.ID, 'token'),
+                (By.XPATH, '//input[@placeholder="Code" or @placeholder="TOTP" or @placeholder="Authentication Code"]')
+            ]
+            
+            # First, try to find TOTP field on current page
+            for selector_type, selector in totp_selectors:
+                try:
+                    totp_input = self.driver.find_element(selector_type, selector)
+                    print(f"Found TOTP field using: {selector_type}, {selector}")
+                    break
+                except:
+                    continue
+            
+            if totp_input:
+                # TOTP field found on same page
+                totp_input.clear()
+                totp_input.send_keys(totp_code)
+                print("Entered TOTP code")
+            else:
+                # TOTP field not found, try submitting username/password first
+                print("TOTP field not found initially, submitting credentials first...")
+                
+                # Find and click submit button
+                submit_button = None
+                submit_selectors = [
+                    (By.CSS_SELECTOR, self.submit_button_selector),
+                    (By.CSS_SELECTOR, 'input[type="submit"]'),
+                    (By.CSS_SELECTOR, 'button[type="submit"]'),
+                    (By.XPATH, '//button[contains(text(), "Login") or contains(text(), "Sign in") or contains(text(), "Submit")]'),
+                    (By.XPATH, '//input[@value="Login" or @value="Sign in" or @value="Submit"]')
+                ]
+                
+                for selector_type, selector in submit_selectors:
+                    try:
+                        submit_button = self.driver.find_element(selector_type, selector)
+                        print(f"Found submit button using: {selector_type}, {selector}")
+                        break
+                    except:
+                        continue
+                
+                if not submit_button:
+                    print("Could not find submit button")
+                    return False
+                    
+                submit_button.click()
+                time.sleep(3)  # Wait for potential redirect/new page
+                
+                print("=== PAGE AFTER FIRST SUBMIT ===")
+                self.debug_page_elements()
+                print("=============================")
+                
+                # Now look for TOTP field again
+                for selector_type, selector in totp_selectors:
+                    try:
+                        totp_input = wait.until(EC.presence_of_element_located((selector_type, selector)))
+                        print(f"Found TOTP field after submit using: {selector_type}, {selector}")
+                        break
+                    except TimeoutException:
+                        continue
+                
+                if not totp_input:
+                    print("Could not find TOTP field even after submitting credentials")
+                    return False
+                    
+                totp_input.clear()
+                totp_input.send_keys(totp_code)
+                print("Entered TOTP code on second page")
+            
+            # Submit the final form
+            final_submit = None
+            submit_selectors = [
+                (By.CSS_SELECTOR, self.submit_button_selector),
+                (By.CSS_SELECTOR, 'input[type="submit"]'),
+                (By.CSS_SELECTOR, 'button[type="submit"]'),
+                (By.XPATH, '//button[contains(text(), "Login") or contains(text(), "Sign in") or contains(text(), "Submit") or contains(text(), "Verify")]'),
+                (By.XPATH, '//input[@value="Login" or @value="Sign in" or @value="Submit" or @value="Verify"]')
+            ]
+            
+            for selector_type, selector in submit_selectors:
+                try:
+                    final_submit = self.driver.find_element(selector_type, selector)
+                    print(f"Found final submit button using: {selector_type}, {selector}")
+                    break
+                except:
+                    continue
+                    
+            if final_submit:
+                final_submit.click()
+                print("Clicked final submit button")
+            else:
+                print("Warning: Could not find final submit button, authentication may be incomplete")
+            
+            # Wait for authentication to complete
+            time.sleep(5)
+            
+            # Check if authentication was successful
+            current_url = self.driver.current_url
+            print(f"Final URL after authentication: {current_url}")
+            
+            # More sophisticated success detection
+            success_indicators = [
+                "dashboard" in current_url.lower(),
+                "overview" in current_url.lower() and "systems-overview" in current_url,
+                "profile" in current_url.lower(),
+                "home" in current_url.lower(),
+                "login" not in current_url.lower() and "auth" not in current_url.lower()
+            ]
+            
+            if any(success_indicators):
+                print("Authentication appears successful!")
+                self.authenticated = True
+                return True
+            else:
+                print(f"Authentication may have failed - current URL: {current_url}")
+                return False
+                
+        except TimeoutException as e:
+            print(f"Timeout during authentication: {e}")
             return False
         except Exception as e:
-            print(f"Authentication failed: {str(e)}")
+            print(f"Authentication error: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
-    def authenticate_interactive(self):
-        """Interactive authentication - user handles login manually"""
-        print("Please complete the authentication process manually...")
-        print("The browser window will open. Please:")
-        print("1. Log in with your username and password")
-        print("2. Complete the 2FA process with Google Authenticator")
-        print("3. Once logged in successfully, press Enter here to continue...")
-        
-        input("Press Enter once you have completed the login process...")
-        print("Continuing with scraping...")
-        return True
-
     def navigate(self, target) -> None:
-        """Navigtate""" 
+        """Navigate to target URL, authenticating if necessary""" 
+        if not self.authenticated and self.login_url:
+            if not self.authenticate():
+                print("Authentication failed, continuing without auth...")
+        
         self.driver.get(target)
 
     def extract_raw_data(self) -> str:
@@ -178,26 +373,6 @@ class YeehaaScraper:
         return content
 
     def scrape_sites(self) -> None:
-        # Perform authentication if configured
-        if self.auth_config.get('enabled', False):
-            if self.auth_config.get('method') == 'interactive':
-                # Navigate to the first site for interactive login
-                self.driver.get(self.site_urls[0])
-                if not self.authenticate_interactive():
-                    print("Authentication failed. Exiting...")
-                    return
-            elif self.auth_config.get('method') == 'automatic':
-                if not self.authenticate_2fa(
-                    self.auth_config['login_url'],
-                    self.auth_config['username_selector'],
-                    self.auth_config['password_selector'],
-                    self.auth_config['totp_selector'],
-                    self.auth_config['submit_selector'],
-                    self.auth_config.get('totp_secret')
-                ):
-                    print("Automatic authentication failed. Exiting...")
-                    return
-        
         cnt = 0
         for site in self.site_urls:
             self._scrape_site(site, self.root_urls[cnt])
@@ -221,17 +396,9 @@ class YeehaaScraper:
         o = urlparse(urlen)
         urlen = o._replace(fragment="").geturl()
         
-        #if o.path.endswith(".html"):
-        #    tmpf = o.path.replace(".html", o.fragment + ".html")            
-        #else: 
-        #    tmpf = o.path
         tmpf = o.path
         
         head, _, tail = tmpf.partition('#')
-        #if tail != "":
-        #    tmpf = head + "_" + tail
-        #else:
-        #    tmpf = head
         tmpf = head    
        
         parts = tmpf.split('/')
@@ -241,7 +408,7 @@ class YeehaaScraper:
         file_name, file_extension = os.path.splitext(file_name)
         print("EXTN: "+ file_extension)
         if file_extension == ".png" or  file_extension == ".jpg" or  file_extension == ".jpeg" or  file_extension == ".gif":
-            print("Skippint image "+ urlen)
+            print("Skipping image "+ urlen)
             return
         if file_extension == "":
             file_extension = ".html"
@@ -257,7 +424,6 @@ class YeehaaScraper:
                         f.write(response.content)
                     elm = {}
                     elm['title'] = ""
-                    #elm['links'] = hrefs
                     elm['url'] = urlen
                     elm['file_name'] = file_name
                     self.metadata.append(elm)
@@ -270,7 +436,7 @@ class YeehaaScraper:
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
         hash1 = hashlib.md5(html_content.encode('utf-8')).hexdigest()
-        if hash1 in self.content_hashes: # Check if content already added . (Avoid duplicates in vector databasae)                                                                                                     
+        if hash1 in self.content_hashes: # Check if content already added . (Avoid duplicates in vector database)                                                                                                     
             print(f"Skipping duplicate content {urlen} {hash1} {self.content_hashes[hash1]}")
             self.scraped_urls[urlen] = True
             return
@@ -281,15 +447,12 @@ class YeehaaScraper:
 
         with open(self.scraped_dir + "/" + file_name, 'w', encoding='utf-8') as f:
             f.write(html_content)
-        #print(html_content)
 
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        #print(soup.prettify())
         title = ""
         if soup.title:
             title = soup.title.string
-        #print(f'Page Title: {title} url: {urlen}' )
 
         all_links = self.extract_all_elements('a', By.TAG_NAME)
         hrefs = []
@@ -298,12 +461,13 @@ class YeehaaScraper:
 
         elm = {}
         elm['title'] = title
-        #elm['links'] = hrefs
         elm['url'] = urlen
         elm['file_name'] = file_name
         self.metadata.append(elm)
         ### Scrape one page 
-        #return
+        if self.one_page_only: 
+            return
+        
         for href in hrefs:
             if href is None:
                 continue
@@ -319,11 +483,9 @@ class YeehaaScraper:
                     continue
 
                 if  href in self.scraped_urls:
-                    #print(f"{urlen} already scraped. Skipping")
                     continue
                 else:
                     self.scraped_urls[href] = True
-                    #print(f"Scraping {href } \"{title }\" to {file_name} ({self.rec_depth})")
                     self._scrape_site(href, rooturl)
                     time.sleep(1) # Be nice
             except Exception as e:
@@ -336,38 +498,133 @@ class YeehaaScraper:
                 continue
         self.rec_depth = self.rec_depth -1
 
-if __name__ == "__main__":
+def get_credentials():
+    """Get credentials from environment variables or config file"""
+    # Try environment variables first
+    username = os.getenv('SCRAPER_USERNAME')
+    password = os.getenv('SCRAPER_PASSWORD')
+    totp_secret = os.getenv('SCRAPER_TOTP_SECRET')
+    
+    # If env vars not found, try config file
+    if not all([username, password, totp_secret]):
+        config_file = 'scraper_config.json'
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    username = config.get('username')
+                    password = config.get('password')
+                    totp_secret = config.get('totp_secret')
+                    print("Loaded credentials from config file")
+            except Exception as e:
+                print(f"Error reading config file: {e}")
+        else:
+            # Create example config file
+            example_config = {
+                "username": "your_username",
+                "password": "your_password", 
+                "totp_secret": "your_totp_secret_key",
+                "login_url": "https://systems-overview.pages.met.no/login",
+                "username_field": "username",
+                "password_field": "password",
+                "totp_field": "totp"
+            }
+            with open('scraper_config.example.json', 'w') as f:
+                json.dump(example_config, f, indent=4)
+            print(f"Created example config file: scraper_config.example.json")
+            print("Please copy it to scraper_config.json and fill in your credentials")
+    
+    if not all([username, password, totp_secret]):
+        print("Error: Missing credentials!")
+        print("Set environment variables:")
+        print("  export SCRAPER_USERNAME='your_username'")
+        print("  export SCRAPER_PASSWORD='your_password'")
+        print("  export SCRAPER_TOTP_SECRET='your_totp_secret'")
+        print("Or create scraper_config.json with your credentials")
+        sys.exit(1)
+        
+    return username, password, totp_secret
 
-    # Configuration for 2FA authentication
-    # Method 1: Interactive (recommended for first time)
-    auth_config_interactive = {
-        'enabled': True,
-        'method': 'interactive'  # User handles login manually
+def load_config():
+    """Load additional configuration from file or use defaults"""
+    config_file = 'scraper_config.json'
+    default_config = {
+        "login_url": "https://systems-overview.pages.met.no/login",
+        "username_field": "username", 
+        "password_field": "password",
+        "totp_field": "totp"
     }
     
-    # Method 2: Automatic (requires knowing the form selectors)
-    # You'll need to inspect the login page to get the correct selectors
-    auth_config_automatic = {
-        'enabled': True,
-        'method': 'automatic',
-        'login_url': 'https://systems-overview.pages.met.no/systems-overview/login',  # Update with actual login URL
-        'username_selector': 'input[name="username"]',  # Update with actual selector
-        'password_selector': 'input[name="password"]',  # Update with actual selector  
-        'totp_selector': 'input[name="totp"]',  # Update with actual selector
-        'submit_selector': 'button[type="submit"]',  # Update with actual selector
-        'username': '',  # Optional: set username here
-        'password': '',  # Optional: set password here
-        'totp_secret': ''  # Optional: your TOTP secret key from Google Authenticator setup
-    }
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                file_config = json.load(f)
+                # Merge with defaults
+                for key, value in file_config.items():
+                    if key in default_config:
+                        default_config[key] = value
+        except Exception as e:
+            print(f"Error reading config file: {e}")
+    
+    return default_config
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Web scraper with configurable options")
+     # Mandatory URL parameter
+    parser.add_argument(
+        '--scrape-url', 
+        required=True, 
+        help='URL to scrape (mandatory)'
+    )
+    
+    # Optional output directory with dynamic default
+    parser.add_argument(
+        '--output-dir', 
+        default=None,
+        help='Output directory (default: host_datetime)'
+    )
+    
+    # Optional one-page-only flag
+    parser.add_argument(
+        '--one-page-only', 
+        action='store_true',
+        default=False,
+        help='Scrape only one page (default: False)'
+    )
+    
+    args = parser.parse_args()
+    
+     # Set default output directory if not provided
+    if args.output_dir is None:
+        args.output_dir = create_output_dir(args.scrape_url)
+        
+    print(f"Scraping URL: {args.scrape_url}")
+    print(f"Output directory: {args.output_dir}")
+    print(f"One page only: {args.one_page_only}")
+    print("-" * 50)
+    
+    # Get credentials automatically
+    username, password, totp_secret = get_credentials()
+    
+    # Load additional configuration
+    config = load_config()
+    
     scraper = YeehaaScraper([
-        'https://systems-overview.pages.met.no/systems-overview/'
+        #'https://systems-overview.pages.met.no/systems-overview/'
+        #'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
+        args.scrape_url
     ], 
         skip_patterns=['dokit-dump', '.rst.txt'],
-        scraped_dir='scraped-systems-overview-2025-01-25',
-        auth_config=auth_config_interactive  # Use interactive method
+        scraped_dir=args.output_dir,
+        one_page_only=args.one_page_only,
+        username=username,
+        password=password,
+        totp_secret=totp_secret,
+        login_url=config['login_url'],
+        username_field=config['username_field'],
+        password_field=config['password_field'],
+        totp_field=config['totp_field']
     )
 
     scraper.scrape_sites()
     print("Done")
-    
