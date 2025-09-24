@@ -32,6 +32,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 from selenium.webdriver.chrome.service import Service
+from markdownify import markdownify as md
 
 def create_output_dir(url):
     """Create output directory name from URL host and current datetime."""
@@ -50,13 +51,14 @@ class YeehaaScraper:
                  convert_to_absolute_url=False, skip_patterns=[], 
                  username=None, password=None, totp_secret=None, 
                  login_url=None, username_field="username", password_field="password", 
-                 totp_field="totp", submit_button_selector="input[type='submit']") -> None:
+                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=True) -> None:
         
         self.scraped_dir = scraped_dir + "/data"
         self.one_page_only = one_page_only
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
-        
+        self.convert_to_markdown = convert_to_markdown
+         
         # Authentication parameters
         self.username = username
         self.password = password
@@ -412,11 +414,14 @@ class YeehaaScraper:
             return
         if file_extension == "":
             file_extension = ".html"
+         # Force extension change if --convert-to-markdown
+        if self.convert_to_markdown and file_extension == ".html":
+            file_extension = ".md"
 
         file_name =  o.netloc + "__".join(parts) + "--" + file_name + file_extension
         print("TO " + file_name)
         print("")
-        if file_extension != '.html':
+        if file_extension not in [".html", ".md"]:
             try:
                 response = requests.get(urlen, timeout=None)
                 if 200 <= response.status_code <= 299:
@@ -445,8 +450,17 @@ class YeehaaScraper:
         if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
 
-        with open(self.scraped_dir + "/" + file_name, 'w', encoding='utf-8') as f:
-            f.write(html_content)
+        output_path = os.path.join(self.scraped_dir, file_name)
+        if self.convert_to_markdown:
+            try:
+                md_content = md(html_content, heading_style="ATX")
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(md_content)
+            except Exception as e:
+                print(f"Markdown conversion failed for {urlen}: {e}")
+        else:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
 
         soup = BeautifulSoup(html_content, 'html.parser')
         
@@ -591,13 +605,15 @@ if __name__ == "__main__":
         default=False,
         help='Scrape only one page (default: False)'
     )
-    
+    parser.add_argument('--convert-to-markdown', action='store_true', help='Convert HTML pages to Markdown (.md)')
     args = parser.parse_args()
     
      # Set default output directory if not provided
     if args.output_dir is None:
         args.output_dir = create_output_dir(args.scrape_url)
-        
+    
+   
+    
     print(f"Scraping URL: {args.scrape_url}")
     print(f"Output directory: {args.output_dir}")
     print(f"One page only: {args.one_page_only}")
@@ -623,7 +639,8 @@ if __name__ == "__main__":
         login_url=config['login_url'],
         username_field=config['username_field'],
         password_field=config['password_field'],
-        totp_field=config['totp_field']
+        totp_field=config['totp_field'],
+        convert_to_markdown=args.convert_to_markdown
     )
 
     scraper.scrape_sites()
