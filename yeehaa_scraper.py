@@ -51,7 +51,7 @@ class YeehaaScraper:
                  convert_to_absolute_url=False, skip_patterns=[], 
                  username=None, password=None, totp_secret=None, 
                  login_url=None, username_field="username", password_field="password", 
-                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=True) -> None:
+                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=False) -> None:
         
         self.scraped_dir = scraped_dir + "/data"
         self.one_page_only = one_page_only
