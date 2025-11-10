@@ -409,6 +409,10 @@ class YeehaaScraper:
 
         file_name, file_extension = os.path.splitext(file_name)
         print("EXTN: "+ file_extension)
+        
+        # Store original extension for doc_type before any modifications
+        original_extension = file_extension if file_extension else ".html"
+        
         if file_extension == ".png" or  file_extension == ".jpg" or  file_extension == ".jpeg" or  file_extension == ".gif":
             print("Skipping image "+ urlen)
             return
@@ -417,6 +421,9 @@ class YeehaaScraper:
          # Force extension change if --convert-to-markdown
         if self.convert_to_markdown and file_extension == ".html":
             file_extension = ".md"
+        
+        # Derive doc_type from original extension (remove leading dot)
+        doc_type = original_extension.lstrip('.') if original_extension else 'html'
 
         file_name =  o.netloc + "__".join(parts) + "--" + file_name + file_extension
         print("TO " + file_name)
@@ -431,6 +438,7 @@ class YeehaaScraper:
                     elm['title'] = ""
                     elm['url'] = urlen
                     elm['file_name'] = file_name
+                    elm['doc_type'] = doc_type
                     self.metadata.append(elm)
                 else:
                     print(f"Failed to get {urlen} https status {response.status_code}")
@@ -477,6 +485,7 @@ class YeehaaScraper:
         elm['title'] = title
         elm['url'] = urlen
         elm['file_name'] = file_name
+        elm['doc_type'] = doc_type
         self.metadata.append(elm)
         ### Scrape one page 
         if self.one_page_only: 
