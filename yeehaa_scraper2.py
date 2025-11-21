@@ -51,13 +51,15 @@ class YeehaaScraper:
                  convert_to_absolute_url=False, skip_patterns=[], 
                  username=None, password=None, totp_secret=None, 
                  login_url=None, username_field="username", password_field="password", 
-                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=False) -> None:
+                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=False,
+                 extract_anchors=False) -> None:
         
         self.scraped_dir = scraped_dir + "/data"
         self.one_page_only = one_page_only
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
         self.convert_to_markdown = convert_to_markdown
+        self.extract_anchors = extract_anchors
          
         # Authentication parameters
         self.username = username
@@ -374,6 +376,64 @@ class YeehaaScraper:
         content = p.sub(_srcrepl, content)
         return content
 
+    def extract_anchor_content(self, soup, anchor_id):
+        """Extract content for a specific anchor/fragment"""
+        print(f"  Attempting to extract content for anchor: #{anchor_id}")
+        
+        # Try to find element by ID
+        element = soup.find(id=anchor_id)
+        if element:
+            print(f"  Found element with id='{anchor_id}'")
+            # If it's a heading, get the heading and all content until next heading of same/higher level
+            if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                heading_level = int(element.name[1])
+                content = [str(element)]
+                
+                for sibling in element.find_next_siblings():
+                    if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                        sibling_level = int(sibling.name[1])
+                        if sibling_level <= heading_level:
+                            break
+                    content.append(str(sibling))
+                
+                result = '\n'.join(content)
+                print(f"  Extracted {len(content)} elements (heading + content)")
+                return result
+            else:
+                # Not a heading, just return the element
+                print(f"  Found non-heading element, returning as-is")
+                return str(element)
+        
+        # Try to find element by name attribute (older HTML)
+        element = soup.find(attrs={"name": anchor_id})
+        if element:
+            print(f"  Found element with name='{anchor_id}'")
+            return str(element)
+        
+        # Try to find by searching for <a> tags with href="#anchor_id"
+        anchor_link = soup.find('a', href=f'#{anchor_id}')
+        if anchor_link:
+            print(f"  Found anchor link for #{anchor_id}")
+            # Get the parent element (likely a heading)
+            parent = anchor_link.parent
+            if parent and parent.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                heading_level = int(parent.name[1])
+                content = [str(parent)]
+                
+                for sibling in parent.find_next_siblings():
+                    if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                        sibling_level = int(sibling.name[1])
+                        if sibling_level <= heading_level:
+                            break
+                    content.append(str(sibling))
+                
+                result = '\n'.join(content)
+                print(f"  Extracted {len(content)} elements via anchor link")
+                return result
+        
+        print(f"  WARNING: Could not find content for anchor #{anchor_id}")
+        return None
+
     def scrape_sites(self) -> None:
         cnt = 0
         for site in self.site_urls:
@@ -396,7 +456,10 @@ class YeehaaScraper:
         time.sleep(2) # Give time to render ..
      
         o = urlparse(urlen)
-        urlen = o._replace(fragment="").geturl()
+        
+        # Store the fragment before removing it
+        fragment = o.fragment
+        urlen_no_fragment = o._replace(fragment="").geturl()
         
         tmpf = o.path
         
@@ -425,29 +488,54 @@ class YeehaaScraper:
         # Derive doc_type from original extension (remove leading dot)
         doc_type = original_extension.lstrip('.') if original_extension else 'html'
 
-        file_name =  o.netloc + "__".join(parts) + "--" + file_name + file_extension
-        print("TO " + file_name)
+        base_file_name =  o.netloc + "__".join(parts) + "--" + file_name
+        
+        # If there's a fragment and extract_anchors is enabled, modify the filename
+        if fragment and self.extract_anchors:
+            file_name_with_anchor = base_file_name + "_" + fragment + file_extension
+        else:
+            file_name_with_anchor = base_file_name + file_extension
+            
+        print("TO " + file_name_with_anchor)
         print("")
+        
         if file_extension not in [".html", ".md"]:
             try:
-                response = requests.get(urlen, timeout=None)
+                response = requests.get(urlen_no_fragment, timeout=None)
                 if 200 <= response.status_code <= 299:
-                    with open(self.scraped_dir + "/" + file_name, 'wb') as f:
+                    with open(self.scraped_dir + "/" + file_name_with_anchor, 'wb') as f:
                         f.write(response.content)
                     elm = {}
                     elm['title'] = ""
                     elm['url'] = urlen
-                    elm['file_name'] = file_name
+                    elm['file_name'] = file_name_with_anchor
                     elm['doc_type'] = doc_type
+                    if fragment:
+                        elm['anchor'] = fragment
                     self.metadata.append(elm)
                 else:
-                    print(f"Failed to get {urlen} https status {response.status_code}")
+                    print(f"Failed to get {urlen_no_fragment} https status {response.status_code}")
             except Exception as e :
                 print("urlretrieve failed " + str(e))
             return
 
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
+        
+        # If extract_anchors is enabled and there's a fragment, extract only that section
+        if fragment and self.extract_anchors:
+            print(f"ANCHOR EXTRACTION MODE: Extracting section #{fragment}")
+            soup = BeautifulSoup(html_content, 'html.parser')
+            anchor_content = self.extract_anchor_content(soup, fragment)
+            
+            if anchor_content:
+                print(f"  Successfully extracted anchor content for #{fragment}")
+                html_content = anchor_content
+            else:
+                print(f"  WARNING: Could not find anchor #{fragment}, saving full page instead")
+        elif fragment:
+            print(f"Note: Fragment #{fragment} present but --extract-anchors not enabled")
+        
         hash1 = hashlib.md5(html_content.encode('utf-8')).hexdigest()
         if hash1 in self.content_hashes: # Check if content already added . (Avoid duplicates in vector database)                                                                                                     
             print(f"Skipping duplicate content {urlen} {hash1} {self.content_hashes[hash1]}")
@@ -458,7 +546,7 @@ class YeehaaScraper:
         if self.convert_to_absolute_url:
             html_content = self.srcrepl(rooturl, html_content)
 
-        output_path = os.path.join(self.scraped_dir, file_name)
+        output_path = os.path.join(self.scraped_dir, file_name_with_anchor)
         if self.convert_to_markdown:
             try:
                 md_content = md(html_content, heading_style="ATX")
@@ -484,28 +572,30 @@ class YeehaaScraper:
         elm = {}
         elm['title'] = title
         elm['url'] = urlen
-        elm['file_name'] = file_name
+        elm['file_name'] = file_name_with_anchor
         elm['doc_type'] = doc_type
+        if fragment:
+            elm['anchor'] = fragment
         
         # Only extract person, tjeneste, and produkt for index.html pages
-        if urlen.endswith('/index.html'):
+        if urlen_no_fragment.endswith('/index.html'):
             
             # Extract person from URL if present (e.g., /person/agnesny@met.no/index.html)
-            person_match = re.search(r'/person/([^/]+)/', urlen)
+            person_match = re.search(r'/person/([^/]+)/', urlen_no_fragment)
             if person_match:
                 elm['person'] = person_match.group(1)
             else:
                 elm['person'] = None
             
             # Extract tjeneste (service) from URL if present (e.g., /tjeneste/brannmur%20og%20sonesikring/index.html)
-            tjeneste_match = re.search(r'/tjeneste/([^/]+)/', urlen)
+            tjeneste_match = re.search(r'/tjeneste/([^/]+)/', urlen_no_fragment)
             if tjeneste_match:
                 elm['tjeneste'] = tjeneste_match.group(1)
             else:
                 elm['tjeneste'] = None
             
             # Extract produkt (product) from URL if present (e.g., /produkt/metproduction_work_ecmwf_incoming_N6/index.html)
-            produkt_match = re.search(r'/produkt/([^/]+)/', urlen)
+            produkt_match = re.search(r'/produkt/([^/]+)/', urlen_no_fragment)
             if produkt_match:
                 elm['produkt'] = produkt_match.group(1)
             else:
@@ -525,25 +615,52 @@ class YeehaaScraper:
             if href is None:
                 continue
             try:
+                # Handle fragment-only links (e.g., #section)
+                if href.startswith('#'):
+                    # Convert fragment-only link to full URL
+                    href = urlen_no_fragment + href
+                
                 o = urlparse(href)
-                href = o._replace(fragment="").geturl()
-                if href is None or href == "":
-                    self.scraped_urls[href] = True
+                # Keep the full URL with fragment for processing
+                href_with_fragment = href
+                href_without_fragment = o._replace(fragment="").geturl()
+                
+                if href_without_fragment is None or href_without_fragment == "":
+                    self.scraped_urls[href_with_fragment] = True
                     continue
-                if not href.startswith(rooturl):
-                    print(href + " outside domain. Skipping")
-                    self.scraped_urls[href] = True
+                if not href_without_fragment.startswith(rooturl):
+                    print(href_without_fragment + " outside domain. Skipping")
+                    self.scraped_urls[href_with_fragment] = True
                     continue
 
-                if  href in self.scraped_urls:
+                # Check both with and without fragment to avoid duplicate base page scraping
+                if href_without_fragment in self.scraped_urls:
+                    # Base page already scraped
+                    if o.fragment and self.extract_anchors:
+                        # But we still want to extract this specific anchor if not done yet
+                        if href_with_fragment not in self.scraped_urls:
+                            self.scraped_urls[href_with_fragment] = True
+                            print(f"Extracting anchor from already-scraped page: {href_with_fragment}")
+                            self._scrape_site(href_with_fragment, rooturl)
+                            time.sleep(1)
+                    else:
+                        # Mark as scraped and skip
+                        self.scraped_urls[href_with_fragment] = True
                     continue
                 else:
-                    self.scraped_urls[href] = True
-                    self._scrape_site(href, rooturl)
+                    # Mark both versions as scraped
+                    self.scraped_urls[href_without_fragment] = True
+                    self.scraped_urls[href_with_fragment] = True
+                    
+                    # If extract_anchors is enabled and there's a fragment, scrape the anchored version
+                    if self.extract_anchors and o.fragment:
+                        self._scrape_site(href_with_fragment, rooturl)
+                    else:
+                        self._scrape_site(href_without_fragment, rooturl)
                     time.sleep(1) # Be nice
             except Exception as e:
                 self.scraped_urls[href] = True
-                print("Exception on url " + href)
+                print("Exception on url " + str(href))
                 if hasattr(e, 'message'):
                     print(e.message)
                 else:
@@ -645,6 +762,8 @@ if __name__ == "__main__":
         help='Scrape only one page (default: False)'
     )
     parser.add_argument('--convert-to-markdown', action='store_true', help='Convert HTML pages to Markdown (.md)')
+    parser.add_argument('--extract-anchors', action='store_true', help='Extract anchor sections into separate files')
+    
     args = parser.parse_args()
     
      # Set default output directory if not provided
@@ -656,6 +775,8 @@ if __name__ == "__main__":
     print(f"Scraping URL: {args.scrape_url}")
     print(f"Output directory: {args.output_dir}")
     print(f"One page only: {args.one_page_only}")
+    print(f"Convert to markdown: {args.convert_to_markdown}")
+    print(f"Extract anchors: {args.extract_anchors}")
     print("-" * 50)
     
     # Get credentials automatically
@@ -679,7 +800,8 @@ if __name__ == "__main__":
         username_field=config['username_field'],
         password_field=config['password_field'],
         totp_field=config['totp_field'],
-        convert_to_markdown=args.convert_to_markdown
+        convert_to_markdown=args.convert_to_markdown,
+        extract_anchors=args.extract_anchors
     )
 
     scraper.scrape_sites()
