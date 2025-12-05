@@ -19,6 +19,8 @@ import pyotp
 import argparse
 from datetime import datetime
 from pathlib import Path
+from dateutil import parser as date_parser
+import locale
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -42,6 +44,116 @@ def create_output_dir(url):
     host = host.replace('www.', '').replace(':', '_').replace('/', '_')
     timestamp = datetime.now().strftime("%Y%m%dT%H%M")
     return f"{host}_{timestamp}"
+
+
+def extract_last_updated_date(html_content):
+    """
+    Extract last updated date from various formats found in the HTML content.
+    Returns the date in ISO format (YYYY-MM-DD) or None if not found.
+    """
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Norwegian month names to numbers
+    norwegian_months = {
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+        'mai': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+        'sep': '09', 'okt': '10', 'nov': '11', 'des': '12'
+    }
+    
+    # Get all text content
+    text_content = soup.get_text()
+    
+    # Patterns to search for
+    patterns = [
+        # Sist oppdatert 02. des. 2025
+        # Last updated 02. des. 2025
+        r'(?:sist oppdatert|last updated)\s+(\d{1,2})\.\s+(\w{3,4})\.\s+(\d{4})',
+        
+        # dated 2025-11-27T07:32:40Z
+        # datert 2025-11-27T07:32:40Z
+        r'(?:dated|datert)\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)',
+        
+        # sist oppdatert 2024-12-06
+        # Last updated 2024-12-06
+        r'(?:sist oppdatert|last updated)\s+(\d{4}-\d{2}-\d{2})',
+        
+        # Alternative patterns with colon
+        r'(?:sist oppdatert|last updated):\s+(\d{1,2})\.\s+(\w{3,4})\.\s+(\d{4})',
+        r'(?:sist oppdatert|last updated):\s+(\d{4}-\d{2}-\d{2})',
+        r'(?:dated|datert):\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text_content, re.IGNORECASE)
+        if match:
+            groups = match.groups()
+            
+            try:
+                # Check if it's ISO format with timestamp
+                if 'T' in match.group(0):
+                    # Extract just the date part from ISO timestamp
+                    date_str = groups[0].split('T')[0]
+                    # Validate format
+                    datetime.strptime(date_str, '%Y-%m-%d')
+                    return date_str
+                
+                # Check if it's YYYY-MM-DD format
+                elif len(groups) == 1 and '-' in groups[0]:
+                    date_str = groups[0]
+                    # Validate format
+                    datetime.strptime(date_str, '%Y-%m-%d')
+                    return date_str
+                
+                # Check if it's DD. MMM. YYYY format (Norwegian/English month names)
+                elif len(groups) == 3:
+                    day, month_str, year = groups
+                    month_str_lower = month_str.lower().rstrip('.')
+                    
+                    # Try Norwegian months first
+                    if month_str_lower in norwegian_months:
+                        month = norwegian_months[month_str_lower]
+                    else:
+                        # Try parsing with dateutil for English month names
+                        try:
+                            temp_date_str = f"{day} {month_str} {year}"
+                            parsed_date = date_parser.parse(temp_date_str)
+                            return parsed_date.strftime('%Y-%m-%d')
+                        except:
+                            continue
+                    
+                    # Construct ISO date for Norwegian format
+                    day = day.zfill(2)
+                    date_str = f"{year}-{month}-{day}"
+                    
+                    # Validate the date
+                    datetime.strptime(date_str, '%Y-%m-%d')
+                    return date_str
+                    
+            except (ValueError, AttributeError) as e:
+                # If parsing fails, continue to next pattern
+                print(f"  Date parsing failed for match: {match.group(0)} - {e}")
+                continue
+    
+    # Check meta tags as fallback
+    meta_tags = [
+        soup.find('meta', property='article:modified_time'),
+        soup.find('meta', property='article:published_time'),
+        soup.find('meta', attrs={'name': 'last-modified'}),
+        soup.find('meta', attrs={'name': 'date'}),
+        soup.find('meta', attrs={'http-equiv': 'last-modified'}),
+    ]
+    
+    for meta_tag in meta_tags:
+        if meta_tag and meta_tag.get('content'):
+            try:
+                content = meta_tag.get('content')
+                # Try to parse the content
+                parsed_date = date_parser.parse(content)
+                return parsed_date.strftime('%Y-%m-%d')
+            except:
+                continue
+    
+    return None
 
 
 class YeehaaScraper:
@@ -512,6 +624,7 @@ class YeehaaScraper:
                     elm['doc_type'] = doc_type
                     if fragment:
                         elm['anchor'] = fragment
+                    elm['last_updated'] = None  # Non-HTML files don't have parseable dates
                     self.metadata.append(elm)
                 else:
                     print(f"Failed to get {urlen_no_fragment} https status {response.status_code}")
@@ -521,6 +634,13 @@ class YeehaaScraper:
 
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
+        
+        # Extract last updated date from the full page before potential anchor extraction
+        last_updated = extract_last_updated_date(html_content)
+        if last_updated:
+            print(f"  Found last updated date: {last_updated}")
+        else:
+            print(f"  No last updated date found")
         
         # If extract_anchors is enabled and there's a fragment, extract only that section
         if fragment and self.extract_anchors:
@@ -574,6 +694,7 @@ class YeehaaScraper:
         elm['url'] = urlen
         elm['file_name'] = file_name_with_anchor
         elm['doc_type'] = doc_type
+        elm['date'] = last_updated  # Add the extracted date
         if fragment:
             elm['anchor'] = fragment
         
