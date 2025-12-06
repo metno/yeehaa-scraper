@@ -635,12 +635,27 @@ class YeehaaScraper:
         # Extract the entire HTML document
         html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
         
+        # Extract metadata from the FULL page BEFORE potential anchor extraction
+        # This prevents title and links from becoming empty when extracting anchors
+        full_soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Extract title from full page
+        title = ""
+        if full_soup.title:
+            title = full_soup.title.string
+        
         # Extract last updated date from the full page before potential anchor extraction
         last_updated = extract_last_updated_date(html_content)
         if last_updated:
             print(f"  Found last updated date: {last_updated}")
         else:
             print(f"  No last updated date found")
+        
+        # Extract all links from full page (using Selenium, not BeautifulSoup)
+        all_links = self.extract_all_elements('a', By.TAG_NAME)
+        hrefs = []
+        for el in all_links:
+            hrefs.append(el.get_attribute('href'))
         
         # If extract_anchors is enabled and there's a fragment, extract only that section
         if fragment and self.extract_anchors:
@@ -677,17 +692,6 @@ class YeehaaScraper:
         else:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
-
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        title = ""
-        if soup.title:
-            title = soup.title.string
-
-        all_links = self.extract_all_elements('a', By.TAG_NAME)
-        hrefs = []
-        for el in all_links:
-            hrefs.append(el.get_attribute('href'))
 
         elm = {}
         elm['title'] = title
