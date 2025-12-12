@@ -36,6 +36,39 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.service import Service
 from markdownify import markdownify as md
 
+def sanitize_filename(filename):
+    """
+    Sanitize a filename by replacing or removing invalid characters.
+    Handles characters that are invalid on Windows, Linux, and macOS.
+    """
+    # Replace problematic characters with underscores
+    # Including: < > : " / \ | ? * ! # % & { } $ ' ` = @ + and spaces
+    invalid_chars = '<>:"/\\|?*!#%&{}$\'`=@+ '
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    
+    # Remove control characters (ASCII 0-31)
+    filename = ''.join(char for char in filename if ord(char) >= 32)
+    
+    # Remove leading/trailing underscores, spaces, and dots
+    filename = filename.strip('_. ')
+    
+    # Replace multiple consecutive underscores with a single one
+    while '__' in filename:
+        filename = filename.replace('__', '_')
+    
+    # Ensure filename is not empty
+    if not filename:
+        filename = 'unnamed'
+    
+    # Limit filename length (most filesystems support 255 chars)
+    # Leave room for extension
+    max_length = 200
+    if len(filename) > max_length:
+        filename = filename[:max_length].rstrip('_')
+    
+    return filename
+
 def create_output_dir(url):
     """Create output directory name from URL host and current datetime."""
     parsed_url = urlparse(url)
@@ -600,11 +633,12 @@ class YeehaaScraper:
         # Derive doc_type from original extension (remove leading dot)
         doc_type = original_extension.lstrip('.') if original_extension else 'html'
 
-        base_file_name =  o.netloc + "__".join(parts) + "--" + file_name
+        # Apply sanitize_filename to the base file name to handle invalid characters
+        base_file_name = sanitize_filename(o.netloc + "__".join(parts) + "--" + file_name)
         
         # If there's a fragment and extract_anchors is enabled, modify the filename
         if fragment and self.extract_anchors:
-            file_name_with_anchor = base_file_name + "_" + fragment + file_extension
+            file_name_with_anchor = base_file_name + "_" + sanitize_filename(fragment) + file_extension
         else:
             file_name_with_anchor = base_file_name + file_extension
             
