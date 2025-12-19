@@ -521,6 +521,28 @@ class YeehaaScraper:
         content = p.sub(_srcrepl, content)
         return content
 
+    def strip_images_from_html(self, html_content):
+        """Remove all image tags and image-related elements from HTML content"""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove all <img> tags
+        for img in soup.find_all('img'):
+            img.decompose()
+        
+        # Remove all <picture> tags (responsive images)
+        for picture in soup.find_all('picture'):
+            picture.decompose()
+        
+        # Remove all <svg> tags (vector graphics)
+        for svg in soup.find_all('svg'):
+            svg.decompose()
+        
+        # Remove figure elements that typically contain images
+        for figure in soup.find_all('figure'):
+            figure.decompose()
+            
+        return str(soup)
+
     def extract_anchor_content(self, soup, anchor_id):
         """Extract content for a specific anchor/fragment"""
         print(f"  Attempting to extract content for anchor: #{anchor_id}")
@@ -718,9 +740,16 @@ class YeehaaScraper:
         output_path = os.path.join(self.scraped_dir, file_name_with_anchor)
         if self.convert_to_markdown:
             try:
-                md_content = md(html_content, heading_style="ATX")
+                # Strip images from HTML before converting to markdown
+                print("  Stripping images from HTML before markdown conversion...")
+                html_content_no_images = self.strip_images_from_html(html_content)
+                
+                # Convert to markdown
+                md_content = md(html_content_no_images, heading_style="ATX")
+                
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write(md_content)
+                print(f"  Successfully converted to markdown (images stripped)")
             except Exception as e:
                 print(f"Markdown conversion failed for {urlen}: {e}")
         else:
