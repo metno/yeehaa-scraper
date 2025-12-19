@@ -738,6 +738,8 @@ class YeehaaScraper:
             html_content = self.srcrepl(rooturl, html_content)
 
         output_path = os.path.join(self.scraped_dir, file_name_with_anchor)
+        content_to_save = None
+        
         if self.convert_to_markdown:
             try:
                 # Strip images from HTML before converting to markdown
@@ -746,16 +748,25 @@ class YeehaaScraper:
                 
                 # Convert to markdown
                 md_content = md(html_content_no_images, heading_style="ATX")
+                content_to_save = md_content
                 
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(md_content)
                 print(f"  Successfully converted to markdown (images stripped)")
             except Exception as e:
                 print(f"Markdown conversion failed for {urlen}: {e}")
+                return
         else:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-
+            content_to_save = html_content
+        
+        # Check if content is empty or only whitespace
+        if not content_to_save or not content_to_save.strip():
+            print(f"  Skipping empty file: {file_name_with_anchor}")
+            return
+        
+        # Save the file
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(content_to_save)
+        
+        # Only add metadata after successfully saving the file
         elm = {}
         elm['title'] = title
         elm['url'] = urlen
