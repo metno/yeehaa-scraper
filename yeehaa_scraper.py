@@ -36,6 +36,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.service import Service
 from markdownify import markdownify as md
 
+
 def sanitize_filename(filename):
     """
     Sanitize a filename by replacing or removing invalid characters.
@@ -46,28 +47,29 @@ def sanitize_filename(filename):
     invalid_chars = '<>:"/\\|?*!#%&{}$\'`=@+ '
     for char in invalid_chars:
         filename = filename.replace(char, '_')
-    
+
     # Remove control characters (ASCII 0-31)
     filename = ''.join(char for char in filename if ord(char) >= 32)
-    
+
     # Remove leading/trailing underscores, spaces, and dots
     filename = filename.strip('_. ')
-    
+
     # Replace multiple consecutive underscores with a single one
     while '__' in filename:
         filename = filename.replace('__', '_')
-    
+
     # Ensure filename is not empty
     if not filename:
         filename = 'unnamed'
-    
+
     # Limit filename length (most filesystems support 255 chars)
     # Leave room for extension
     max_length = 200
     if len(filename) > max_length:
         filename = filename[:max_length].rstrip('_')
-    
+
     return filename
+
 
 def create_output_dir(url):
     """Create output directory name from URL host and current datetime."""
@@ -85,42 +87,42 @@ def extract_last_updated_date(html_content):
     Returns the date in ISO format (YYYY-MM-DD) or None if not found.
     """
     soup = BeautifulSoup(html_content, 'html.parser')
-    
+
     # Norwegian month names to numbers
     norwegian_months = {
         'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
         'mai': '05', 'jun': '06', 'jul': '07', 'aug': '08',
         'sep': '09', 'okt': '10', 'nov': '11', 'des': '12'
     }
-    
+
     # Get all text content
     text_content = soup.get_text()
-    
+
     # Patterns to search for
     patterns = [
         # Sist oppdatert 02. des. 2025
         # Last updated 02. des. 2025
         r'(?:sist oppdatert|last updated)\s+(\d{1,2})\.\s+(\w{3,4})\.\s+(\d{4})',
-        
+
         # dated 2025-11-27T07:32:40Z
         # datert 2025-11-27T07:32:40Z
         r'(?:dated|datert)\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)',
-        
+
         # sist oppdatert 2024-12-06
         # Last updated 2024-12-06
         r'(?:sist oppdatert|last updated)\s+(\d{4}-\d{2}-\d{2})',
-        
+
         # Alternative patterns with colon
         r'(?:sist oppdatert|last updated):\s+(\d{1,2})\.\s+(\w{3,4})\.\s+(\d{4})',
         r'(?:sist oppdatert|last updated):\s+(\d{4}-\d{2}-\d{2})',
         r'(?:dated|datert):\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)',
     ]
-    
+
     for pattern in patterns:
         match = re.search(pattern, text_content, re.IGNORECASE)
         if match:
             groups = match.groups()
-            
+
             try:
                 # Check if it's ISO format with timestamp
                 if 'T' in match.group(0):
@@ -129,19 +131,20 @@ def extract_last_updated_date(html_content):
                     # Validate format
                     datetime.strptime(date_str, '%Y-%m-%d')
                     return date_str
-                
+
                 # Check if it's YYYY-MM-DD format
                 elif len(groups) == 1 and '-' in groups[0]:
                     date_str = groups[0]
                     # Validate format
                     datetime.strptime(date_str, '%Y-%m-%d')
                     return date_str
-                
-                # Check if it's DD. MMM. YYYY format (Norwegian/English month names)
+
+                # Check if it's DD. MMM. YYYY format (Norwegian/English month
+                # names)
                 elif len(groups) == 3:
                     day, month_str, year = groups
                     month_str_lower = month_str.lower().rstrip('.')
-                    
+
                     # Try Norwegian months first
                     if month_str_lower in norwegian_months:
                         month = norwegian_months[month_str_lower]
@@ -151,22 +154,24 @@ def extract_last_updated_date(html_content):
                             temp_date_str = f"{day} {month_str} {year}"
                             parsed_date = date_parser.parse(temp_date_str)
                             return parsed_date.strftime('%Y-%m-%d')
-                        except:
+                        except BaseException:
                             continue
-                    
+
                     # Construct ISO date for Norwegian format
                     day = day.zfill(2)
                     date_str = f"{year}-{month}-{day}"
-                    
+
                     # Validate the date
                     datetime.strptime(date_str, '%Y-%m-%d')
                     return date_str
-                    
+
             except (ValueError, AttributeError) as e:
                 # If parsing fails, continue to next pattern
-                print(f"  Date parsing failed for match: {match.group(0)} - {e}")
+                print(
+                    f"  Date parsing failed for match: {
+                        match.group(0)} - {e}")
                 continue
-    
+
     # Check meta tags as fallback
     meta_tags = [
         soup.find('meta', property='article:modified_time'),
@@ -175,7 +180,7 @@ def extract_last_updated_date(html_content):
         soup.find('meta', attrs={'name': 'date'}),
         soup.find('meta', attrs={'http-equiv': 'last-modified'}),
     ]
-    
+
     for meta_tag in meta_tags:
         if meta_tag and meta_tag.get('content'):
             try:
@@ -183,29 +188,41 @@ def extract_last_updated_date(html_content):
                 # Try to parse the content
                 parsed_date = date_parser.parse(content)
                 return parsed_date.strftime('%Y-%m-%d')
-            except:
+            except BaseException:
                 continue
-    
+
     return None
 
 
 class YeehaaScraper:
-    """Recursive web scraper with javascript rendering support and 2FA authentication""" 
+    """Recursive web scraper with javascript rendering support and 2FA authentication"""
 
-    def __init__(self, site_urls, one_page_only=False, scraped_dir="./scraped-data", meta_file="meta.json", 
-                 convert_to_absolute_url=False, skip_patterns=[], 
-                 username=None, password=None, totp_secret=None, 
-                 login_url=None, username_field="username", password_field="password", 
-                 totp_field="totp", submit_button_selector="input[type='submit']",convert_to_markdown=False,
-                 extract_anchors=False) -> None:
-        
+    def __init__(
+            self,
+            site_urls,
+            one_page_only=False,
+            scraped_dir="./scraped-data",
+            meta_file="meta.json",
+            convert_to_absolute_url=False,
+            skip_patterns=[],
+            username=None,
+            password=None,
+            totp_secret=None,
+            login_url=None,
+            username_field="username",
+            password_field="password",
+            totp_field="totp",
+            submit_button_selector="input[type='submit']",
+            convert_to_markdown=False,
+            extract_anchors=False) -> None:
+
         self.scraped_dir = scraped_dir + "/data"
         self.one_page_only = one_page_only
         self.meta_file = scraped_dir + "/" + meta_file
         self.skip_patterns = skip_patterns
         self.convert_to_markdown = convert_to_markdown
         self.extract_anchors = extract_anchors
-         
+
         # Authentication parameters
         self.username = username
         self.password = password
@@ -215,16 +232,16 @@ class YeehaaScraper:
         self.password_field = password_field
         self.totp_field = totp_field
         self.submit_button_selector = submit_button_selector
-        
-        #self.options = FirefoxOptions()
-        #self.options.add_argument("--headless")
-        #self.driver = webdriver.Firefox(options=self.options)
+
+        # self.options = FirefoxOptions()
+        # self.options.add_argument("--headless")
+        # self.driver = webdriver.Firefox(options=self.options)
 
         self.options = Options()
         self.options.add_argument("--no-sandbox")
-        self.options.add_argument("--headless=new") # for Chrome >= 109        
+        self.options.add_argument("--headless=new")  # for Chrome >= 109
         self.options.add_argument("--disable-dev-shm-usage")
-        ser=Service("/snap/bin/chromium.chromedriver")
+        ser = Service("/snap/bin/chromium.chromedriver")
         self.driver = webdriver.Chrome(service=ser, options=self.options)
 
         self.scraped_urls = {}
@@ -232,15 +249,15 @@ class YeehaaScraper:
         self.rec_depth = 0
         self.content_hashes = {}
         self.authenticated = False
-        
+
         root_urls = []
-        for s in self.site_urls: 
+        for s in self.site_urls:
             parsed_uri = urlparse(s)
             root_urls.append(f"{parsed_uri.scheme}://{parsed_uri.netloc}/")
         self.root_urls = root_urls
 
         self.metadata = []
-        self.convert_to_absolute_url = convert_to_absolute_url 
+        self.convert_to_absolute_url = convert_to_absolute_url
         # Todo: Error check
         os.system("mkdir -p " + self.scraped_dir)
         sys.setrecursionlimit(10000)
@@ -249,7 +266,7 @@ class YeehaaScraper:
         """Debug helper to inspect page elements"""
         print(f"Current URL: {self.driver.current_url}")
         print(f"Page title: {self.driver.title}")
-        
+
         # Find all input fields
         inputs = self.driver.find_elements(By.TAG_NAME, 'input')
         print(f"Found {len(inputs)} input elements:")
@@ -257,47 +274,51 @@ class YeehaaScraper:
             input_type = inp.get_attribute('type') or 'text'
             input_name = inp.get_attribute('name') or 'unnamed'
             input_id = inp.get_attribute('id') or 'no-id'
-            input_placeholder = inp.get_attribute('placeholder') or 'no-placeholder'
-            print(f"  Input {i}: type='{input_type}', name='{input_name}', id='{input_id}', placeholder='{input_placeholder}'")
-        
+            input_placeholder = inp.get_attribute(
+                'placeholder') or 'no-placeholder'
+            print(f"  Input {i}: type='{input_type}', name='{input_name}', id='{
+                  input_id}', placeholder='{input_placeholder}'")
+
         # Find all buttons
         buttons = self.driver.find_elements(By.TAG_NAME, 'button')
-        submit_inputs = self.driver.find_elements(By.CSS_SELECTOR, 'input[type="submit"]')
+        submit_inputs = self.driver.find_elements(
+            By.CSS_SELECTOR, 'input[type="submit"]')
         all_buttons = buttons + submit_inputs
         print(f"Found {len(all_buttons)} button/submit elements:")
         for i, btn in enumerate(all_buttons):
             btn_text = btn.text or btn.get_attribute('value') or 'no-text'
             btn_type = btn.get_attribute('type') or 'button'
             btn_class = btn.get_attribute('class') or 'no-class'
-            print(f"  Button {i}: text='{btn_text}', type='{btn_type}', class='{btn_class}'")
+            print(f"  Button {i}: text='{btn_text}', type='{
+                  btn_type}', class='{btn_class}'")
 
     def authenticate(self):
         """Perform 2FA authentication with better error handling and debugging"""
         if not self.login_url:
             print("No login URL provided, skipping authentication")
             return True
-            
+
         if not all([self.username, self.password, self.totp_secret]):
             print("Missing authentication credentials")
             return False
-            
+
         try:
             print("Starting authentication process...")
             self.driver.get(self.login_url)
             time.sleep(3)  # Wait for page to load
-            
+
             # Debug: Show what we found on the page
             print("=== PAGE DEBUG INFO ===")
             self.debug_page_elements()
             print("=====================")
-            
+
             wait = WebDriverWait(self.driver, 15)
-            
+
             # Try multiple strategies to find username field
             username_input = None
             username_selectors = [
                 (By.NAME, self.username_field),
-                (By.ID, self.username_field), 
+                (By.ID, self.username_field),
                 (By.ID, 'username'),
                 (By.ID, 'email'),
                 (By.NAME, 'email'),
@@ -305,23 +326,26 @@ class YeehaaScraper:
                 (By.CSS_SELECTOR, 'input[type="email"]'),
                 (By.XPATH, '//input[@placeholder="Username" or @placeholder="Email" or @placeholder="username" or @placeholder="email"]')
             ]
-            
+
             for selector_type, selector in username_selectors:
                 try:
-                    username_input = wait.until(EC.presence_of_element_located((selector_type, selector)))
-                    print(f"Found username field using: {selector_type}, {selector}")
+                    username_input = wait.until(
+                        EC.presence_of_element_located(
+                            (selector_type, selector)))
+                    print(f"Found username field using: {
+                          selector_type}, {selector}")
                     break
                 except TimeoutException:
                     continue
-            
+
             if not username_input:
                 print("Could not find username field")
                 return False
-                
+
             username_input.clear()
             username_input.send_keys(self.username)
             print("Entered username")
-            
+
             # Try multiple strategies to find password field
             password_input = None
             password_selectors = [
@@ -332,28 +356,30 @@ class YeehaaScraper:
                 (By.CSS_SELECTOR, 'input[type="password"]'),
                 (By.XPATH, '//input[@placeholder="Password" or @placeholder="password"]')
             ]
-            
+
             for selector_type, selector in password_selectors:
                 try:
-                    password_input = self.driver.find_element(selector_type, selector)
-                    print(f"Found password field using: {selector_type}, {selector}")
+                    password_input = self.driver.find_element(
+                        selector_type, selector)
+                    print(f"Found password field using: {
+                          selector_type}, {selector}")
                     break
-                except:
+                except BaseException:
                     continue
-                    
+
             if not password_input:
                 print("Could not find password field")
                 return False
-                
+
             password_input.clear()
             password_input.send_keys(self.password)
             print("Entered password")
-            
+
             # Generate TOTP code
             totp = pyotp.TOTP(self.totp_secret)
             totp_code = totp.now()
             print(f"Generated TOTP code: {totp_code}")
-            
+
             # Look for TOTP field - try multiple strategies
             totp_input = None
             totp_selectors = [
@@ -369,16 +395,18 @@ class YeehaaScraper:
                 (By.ID, 'token'),
                 (By.XPATH, '//input[@placeholder="Code" or @placeholder="TOTP" or @placeholder="Authentication Code"]')
             ]
-            
+
             # First, try to find TOTP field on current page
             for selector_type, selector in totp_selectors:
                 try:
-                    totp_input = self.driver.find_element(selector_type, selector)
-                    print(f"Found TOTP field using: {selector_type}, {selector}")
+                    totp_input = self.driver.find_element(
+                        selector_type, selector)
+                    print(f"Found TOTP field using: {
+                          selector_type}, {selector}")
                     break
-                except:
+                except BaseException:
                     continue
-            
+
             if totp_input:
                 # TOTP field found on same page
                 totp_input.clear()
@@ -387,7 +415,7 @@ class YeehaaScraper:
             else:
                 # TOTP field not found, try submitting username/password first
                 print("TOTP field not found initially, submitting credentials first...")
-                
+
                 # Find and click submit button
                 submit_button = None
                 submit_selectors = [
@@ -397,43 +425,48 @@ class YeehaaScraper:
                     (By.XPATH, '//button[contains(text(), "Login") or contains(text(), "Sign in") or contains(text(), "Submit")]'),
                     (By.XPATH, '//input[@value="Login" or @value="Sign in" or @value="Submit"]')
                 ]
-                
+
                 for selector_type, selector in submit_selectors:
                     try:
-                        submit_button = self.driver.find_element(selector_type, selector)
-                        print(f"Found submit button using: {selector_type}, {selector}")
+                        submit_button = self.driver.find_element(
+                            selector_type, selector)
+                        print(f"Found submit button using: {
+                              selector_type}, {selector}")
                         break
-                    except:
+                    except BaseException:
                         continue
-                
+
                 if not submit_button:
                     print("Could not find submit button")
                     return False
-                    
+
                 submit_button.click()
                 time.sleep(3)  # Wait for potential redirect/new page
-                
+
                 print("=== PAGE AFTER FIRST SUBMIT ===")
                 self.debug_page_elements()
                 print("=============================")
-                
+
                 # Now look for TOTP field again
                 for selector_type, selector in totp_selectors:
                     try:
-                        totp_input = wait.until(EC.presence_of_element_located((selector_type, selector)))
-                        print(f"Found TOTP field after submit using: {selector_type}, {selector}")
+                        totp_input = wait.until(
+                            EC.presence_of_element_located(
+                                (selector_type, selector)))
+                        print(f"Found TOTP field after submit using: {
+                              selector_type}, {selector}")
                         break
                     except TimeoutException:
                         continue
-                
+
                 if not totp_input:
                     print("Could not find TOTP field even after submitting credentials")
                     return False
-                    
+
                 totp_input.clear()
                 totp_input.send_keys(totp_code)
                 print("Entered TOTP code on second page")
-            
+
             # Submit the final form
             final_submit = None
             submit_selectors = [
@@ -443,45 +476,48 @@ class YeehaaScraper:
                 (By.XPATH, '//button[contains(text(), "Login") or contains(text(), "Sign in") or contains(text(), "Submit") or contains(text(), "Verify")]'),
                 (By.XPATH, '//input[@value="Login" or @value="Sign in" or @value="Submit" or @value="Verify"]')
             ]
-            
+
             for selector_type, selector in submit_selectors:
                 try:
-                    final_submit = self.driver.find_element(selector_type, selector)
-                    print(f"Found final submit button using: {selector_type}, {selector}")
+                    final_submit = self.driver.find_element(
+                        selector_type, selector)
+                    print(f"Found final submit button using: {
+                          selector_type}, {selector}")
                     break
-                except:
+                except BaseException:
                     continue
-                    
+
             if final_submit:
                 final_submit.click()
                 print("Clicked final submit button")
             else:
-                print("Warning: Could not find final submit button, authentication may be incomplete")
-            
+                print(
+                    "Warning: Could not find final submit button, authentication may be incomplete")
+
             # Wait for authentication to complete
             time.sleep(5)
-            
+
             # Check if authentication was successful
             current_url = self.driver.current_url
             print(f"Final URL after authentication: {current_url}")
-            
+
             # More sophisticated success detection
             success_indicators = [
                 "dashboard" in current_url.lower(),
                 "overview" in current_url.lower() and "systems-overview" in current_url,
                 "profile" in current_url.lower(),
                 "home" in current_url.lower(),
-                "login" not in current_url.lower() and "auth" not in current_url.lower()
-            ]
-            
+                "login" not in current_url.lower() and "auth" not in current_url.lower()]
+
             if any(success_indicators):
                 print("Authentication appears successful!")
                 self.authenticated = True
                 return True
             else:
-                print(f"Authentication may have failed - current URL: {current_url}")
+                print(
+                    f"Authentication may have failed - current URL: {current_url}")
                 return False
-                
+
         except TimeoutException as e:
             print(f"Timeout during authentication: {e}")
             return False
@@ -492,22 +528,28 @@ class YeehaaScraper:
             return False
 
     def navigate(self, target) -> None:
-        """Navigate to target URL, authenticating if necessary""" 
+        """Navigate to target URL, authenticating if necessary"""
         if not self.authenticated and self.login_url:
             if not self.authenticate():
                 print("Authentication failed, continuing without auth...")
-        
+
         self.driver.get(target)
 
     def extract_raw_data(self) -> str:
         """Extract html"""
         return self.driver.page_source
 
-    def extract_single_element(self,  selector: str, selector_type: By = By.CSS_SELECTOR) -> WebElement:
+    def extract_single_element(
+            self,
+            selector: str,
+            selector_type: By = By.CSS_SELECTOR) -> WebElement:
         """Extract element"""
         return self.driver.find_element(selector_type, selector)
 
-    def extract_all_elements(self, selector: str, selector_type: By = By.CSS_SELECTOR) -> list[WebElement]:
+    def extract_all_elements(
+            self,
+            selector: str,
+            selector_type: By = By.CSS_SELECTOR) -> list[WebElement]:
         """Extract all elements"""
         return self.driver.find_elements(selector_type, selector)
 
@@ -515,7 +557,8 @@ class YeehaaScraper:
 
         def _srcrepl(match):
             "Return the file contents with paths replaced"
-            return "<" + match.group(1) + match.group(2) + "=" + "\"" + absolute_url + match.group(3) + match.group(4) + "\"" + ">"
+            return "<" + match.group(1) + match.group(2) + "=" + "\"" + \
+                absolute_url + match.group(3) + match.group(4) + "\"" + ">"
 
         p = re.compile(r"<(.*?)(src|href)=\"(?!http)(.*?)\"(.*?)>")
         content = p.sub(_srcrepl, content)
@@ -524,59 +567,62 @@ class YeehaaScraper:
     def strip_images_from_html(self, html_content):
         """Remove all image tags and image-related elements from HTML content"""
         soup = BeautifulSoup(html_content, 'html.parser')
-        
+
         # Remove all <img> tags
         for img in soup.find_all('img'):
             img.decompose()
-        
+
         # Remove all <picture> tags (responsive images)
         for picture in soup.find_all('picture'):
             picture.decompose()
-        
+
         # Remove all <svg> tags (vector graphics)
         for svg in soup.find_all('svg'):
             svg.decompose()
-        
+
         # Remove figure elements that typically contain images
         for figure in soup.find_all('figure'):
             figure.decompose()
-            
+
         return str(soup)
 
     def extract_anchor_content(self, soup, anchor_id):
         """Extract content for a specific anchor/fragment"""
         print(f"  Attempting to extract content for anchor: #{anchor_id}")
-        
+
         # Try to find element by ID
         element = soup.find(id=anchor_id)
         if element:
             print(f"  Found element with id='{anchor_id}'")
-            # If it's a heading, get the heading and all content until next heading of same/higher level
+            # If it's a heading, get the heading and all content until next
+            # heading of same/higher level
             if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                 heading_level = int(element.name[1])
                 content = [str(element)]
-                
+
                 for sibling in element.find_next_siblings():
                     if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                         sibling_level = int(sibling.name[1])
                         if sibling_level <= heading_level:
                             break
                     content.append(str(sibling))
-                
+
                 result = '\n'.join(content)
-                print(f"  Extracted {len(content)} elements (heading + content)")
+                print(
+                    f"  Extracted {
+                        len(content)} elements (heading + content)")
                 return result
             else:
                 # Not a heading, just return the element
                 print(f"  Found non-heading element, returning as-is")
                 return str(element)
-        
+
         # Try to find element by name attribute (older HTML)
         element = soup.find(attrs={"name": anchor_id})
         if element:
             print(f"  Found element with name='{anchor_id}'")
             return str(element)
-        
+
         # Try to find by searching for <a> tags with href="#anchor_id"
         anchor_link = soup.find('a', href=f'#{anchor_id}')
         if anchor_link:
@@ -586,18 +632,18 @@ class YeehaaScraper:
             if parent and parent.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                 heading_level = int(parent.name[1])
                 content = [str(parent)]
-                
+
                 for sibling in parent.find_next_siblings():
                     if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                         sibling_level = int(sibling.name[1])
                         if sibling_level <= heading_level:
                             break
                     content.append(str(sibling))
-                
+
                 result = '\n'.join(content)
                 print(f"  Extracted {len(content)} elements via anchor link")
                 return result
-        
+
         print(f"  WARNING: Could not find content for anchor #{anchor_id}")
         return None
 
@@ -612,7 +658,7 @@ class YeehaaScraper:
 
     def _scrape_site(self, urlen, rooturl) -> None:
 
-        for pattern in self.skip_patterns: # TODO: Use regex
+        for pattern in self.skip_patterns:  # TODO: Use regex
             if pattern in urlen:
                 print(f"{urlen} in skiplist. Skipping")
                 return
@@ -620,53 +666,58 @@ class YeehaaScraper:
         print("Scraping " + urlen)
         self.rec_depth = self.rec_depth + 1
         self.navigate(urlen)
-        time.sleep(2) # Give time to render ..
-     
+        time.sleep(2)  # Give time to render ..
+
         o = urlparse(urlen)
-        
+
         # Store the fragment before removing it
         fragment = o.fragment
         urlen_no_fragment = o._replace(fragment="").geturl()
-        
+
         tmpf = o.path
-        
+
         head, _, tail = tmpf.partition('#')
-        tmpf = head    
-       
+        tmpf = head
+
         parts = tmpf.split('/')
         file_name = parts[-1]
         parts.pop()
 
         file_name, file_extension = os.path.splitext(file_name)
-        print("EXTN: "+ file_extension)
-        
+        print("EXTN: " + file_extension)
+
         # Store original extension for doc_type before any modifications
         original_extension = file_extension if file_extension else ".html"
-        
-        if file_extension == ".png" or  file_extension == ".jpg" or  file_extension == ".jpeg" or  file_extension == ".gif":
-            print("Skipping image "+ urlen)
+
+        if file_extension == ".png" or file_extension == ".jpg" or file_extension == ".jpeg" or file_extension == ".gif":
+            print("Skipping image " + urlen)
             return
         if file_extension == "":
             file_extension = ".html"
          # Force extension change if --convert-to-markdown
         if self.convert_to_markdown and file_extension == ".html":
             file_extension = ".md"
-        
-        # Derive doc_type from original extension (remove leading dot)
-        doc_type = original_extension.lstrip('.') if original_extension else 'html'
 
-        # Apply sanitize_filename to the base file name to handle invalid characters
-        base_file_name = sanitize_filename(o.netloc + "__".join(parts) + "--" + file_name)
-        
-        # If there's a fragment and extract_anchors is enabled, modify the filename
+        # Derive doc_type from original extension (remove leading dot)
+        doc_type = original_extension.lstrip(
+            '.') if original_extension else 'html'
+
+        # Apply sanitize_filename to the base file name to handle invalid
+        # characters
+        base_file_name = sanitize_filename(
+            o.netloc + "__".join(parts) + "--" + file_name)
+
+        # If there's a fragment and extract_anchors is enabled, modify the
+        # filename
         if fragment and self.extract_anchors:
-            file_name_with_anchor = base_file_name + "_" + sanitize_filename(fragment) + file_extension
+            file_name_with_anchor = base_file_name + "_" + \
+                sanitize_filename(fragment) + file_extension
         else:
             file_name_with_anchor = base_file_name + file_extension
-            
+
         print("TO " + file_name_with_anchor)
         print("")
-        
+
         if file_extension not in [".html", ".md"]:
             try:
                 response = requests.get(urlen_no_fragment, timeout=None)
@@ -680,56 +731,69 @@ class YeehaaScraper:
                     elm['doc_type'] = doc_type
                     if fragment:
                         elm['anchor'] = fragment
-                    elm['last_updated'] = None  # Non-HTML files don't have parseable dates
+                    # Non-HTML files don't have parseable dates
+                    elm['last_updated'] = None
                     self.metadata.append(elm)
                 else:
-                    print(f"Failed to get {urlen_no_fragment} https status {response.status_code}")
-            except Exception as e :
+                    print(
+                        f"Failed to get {urlen_no_fragment} https status {
+                            response.status_code}")
+            except Exception as e:
                 print("urlretrieve failed " + str(e))
             return
 
         # Extract the entire HTML document
-        html_content = self.driver.execute_script("return document.getElementsByTagName('html')[0].innerHTML")
-        
+        html_content = self.driver.execute_script(
+            "return document.getElementsByTagName('html')[0].innerHTML")
+
         # Extract metadata from the FULL page BEFORE potential anchor extraction
-        # This prevents title and links from becoming empty when extracting anchors
+        # This prevents title and links from becoming empty when extracting
+        # anchors
         full_soup = BeautifulSoup(html_content, 'html.parser')
-        
+
         # Extract title from full page
         title = ""
         if full_soup.title:
             title = full_soup.title.string
-        
-        # Extract last updated date from the full page before potential anchor extraction
+
+        # Extract last updated date from the full page before potential anchor
+        # extraction
         last_updated = extract_last_updated_date(html_content)
         if last_updated:
             print(f"  Found last updated date: {last_updated}")
         else:
             print(f"  No last updated date found")
-        
+
         # Extract all links from full page (using Selenium, not BeautifulSoup)
         all_links = self.extract_all_elements('a', By.TAG_NAME)
         hrefs = []
         for el in all_links:
             hrefs.append(el.get_attribute('href'))
-        
-        # If extract_anchors is enabled and there's a fragment, extract only that section
+
+        # If extract_anchors is enabled and there's a fragment, extract only
+        # that section
         if fragment and self.extract_anchors:
             print(f"ANCHOR EXTRACTION MODE: Extracting section #{fragment}")
             soup = BeautifulSoup(html_content, 'html.parser')
             anchor_content = self.extract_anchor_content(soup, fragment)
-            
+
             if anchor_content:
-                print(f"  Successfully extracted anchor content for #{fragment}")
+                print(
+                    f"  Successfully extracted anchor content for #{fragment}")
                 html_content = anchor_content
             else:
-                print(f"  WARNING: Could not find anchor #{fragment}, saving full page instead")
+                print(f"  WARNING: Could not find anchor #{
+                      fragment}, saving full page instead")
         elif fragment:
-            print(f"Note: Fragment #{fragment} present but --extract-anchors not enabled")
-        
+            print(f"Note: Fragment #{
+                  fragment} present but --extract-anchors not enabled")
+
         hash1 = hashlib.md5(html_content.encode('utf-8')).hexdigest()
-        if hash1 in self.content_hashes: # Check if content already added . (Avoid duplicates in vector database)                                                                                                     
-            print(f"Skipping duplicate content {urlen} {hash1} {self.content_hashes[hash1]}")
+        # Check if content already added . (Avoid duplicates in vector
+        # database)
+        if hash1 in self.content_hashes:
+            print(f"Skipping duplicate content {urlen} {
+                  hash1} {self.content_hashes[hash1]}")
             self.scraped_urls[urlen] = True
             return
         self.content_hashes[hash1] = True
@@ -739,33 +803,34 @@ class YeehaaScraper:
 
         output_path = os.path.join(self.scraped_dir, file_name_with_anchor)
         content_to_save = None
-        
+
         if self.convert_to_markdown:
             try:
                 # Strip images from HTML before converting to markdown
                 print("  Stripping images from HTML before markdown conversion...")
-                html_content_no_images = self.strip_images_from_html(html_content)
-                
+                html_content_no_images = self.strip_images_from_html(
+                    html_content)
+
                 # Convert to markdown
                 md_content = md(html_content_no_images, heading_style="ATX")
                 content_to_save = md_content
-                
+
                 print(f"  Successfully converted to markdown (images stripped)")
             except Exception as e:
                 print(f"Markdown conversion failed for {urlen}: {e}")
                 return
         else:
             content_to_save = html_content
-        
+
         # Check if content is empty or only whitespace
         if not content_to_save or not content_to_save.strip():
             print(f"  Skipping empty file: {file_name_with_anchor}")
             return
-        
+
         # Save the file
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(content_to_save)
-        
+
         # Only add metadata after successfully saving the file
         elm = {}
         elm['title'] = title
@@ -775,25 +840,29 @@ class YeehaaScraper:
         elm['date'] = last_updated  # Add the extracted date
         if fragment:
             elm['anchor'] = fragment
-        
+
         # Only extract person, tjeneste, and produkt for index.html pages
         if urlen_no_fragment.endswith('/index.html'):
-            
-            # Extract person from URL if present (e.g., /person/agnesny@met.no/index.html)
+
+            # Extract person from URL if present (e.g.,
+            # /person/agnesny@met.no/index.html)
             person_match = re.search(r'/person/([^/]+)/', urlen_no_fragment)
             if person_match:
                 elm['person'] = person_match.group(1)
             else:
                 elm['person'] = None
-            
-            # Extract tjeneste (service) from URL if present (e.g., /tjeneste/brannmur%20og%20sonesikring/index.html)
-            tjeneste_match = re.search(r'/tjeneste/([^/]+)/', urlen_no_fragment)
+
+            # Extract tjeneste (service) from URL if present (e.g.,
+            # /tjeneste/brannmur%20og%20sonesikring/index.html)
+            tjeneste_match = re.search(
+                r'/tjeneste/([^/]+)/', urlen_no_fragment)
             if tjeneste_match:
                 elm['tjeneste'] = tjeneste_match.group(1)
             else:
                 elm['tjeneste'] = None
-            
-            # Extract produkt (product) from URL if present (e.g., /produkt/metproduction_work_ecmwf_incoming_N6/index.html)
+
+            # Extract produkt (product) from URL if present (e.g.,
+            # /produkt/metproduction_work_ecmwf_incoming_N6/index.html)
             produkt_match = re.search(r'/produkt/([^/]+)/', urlen_no_fragment)
             if produkt_match:
                 elm['produkt'] = produkt_match.group(1)
@@ -804,12 +873,12 @@ class YeehaaScraper:
             elm['person'] = None
             elm['tjeneste'] = None
             elm['produkt'] = None
-            
+
         self.metadata.append(elm)
-        ### Scrape one page 
-        if self.one_page_only: 
+        # Scrape one page
+        if self.one_page_only:
             return
-        
+
         for href in hrefs:
             if href is None:
                 continue
@@ -818,12 +887,12 @@ class YeehaaScraper:
                 if href.startswith('#'):
                     # Convert fragment-only link to full URL
                     href = urlen_no_fragment + href
-                
+
                 o = urlparse(href)
                 # Keep the full URL with fragment for processing
                 href_with_fragment = href
                 href_without_fragment = o._replace(fragment="").geturl()
-                
+
                 if href_without_fragment is None or href_without_fragment == "":
                     self.scraped_urls[href_with_fragment] = True
                     continue
@@ -832,14 +901,17 @@ class YeehaaScraper:
                     self.scraped_urls[href_with_fragment] = True
                     continue
 
-                # Check both with and without fragment to avoid duplicate base page scraping
+                # Check both with and without fragment to avoid duplicate base
+                # page scraping
                 if href_without_fragment in self.scraped_urls:
                     # Base page already scraped
                     if o.fragment and self.extract_anchors:
-                        # But we still want to extract this specific anchor if not done yet
+                        # But we still want to extract this specific anchor if
+                        # not done yet
                         if href_with_fragment not in self.scraped_urls:
                             self.scraped_urls[href_with_fragment] = True
-                            print(f"Extracting anchor from already-scraped page: {href_with_fragment}")
+                            print(
+                                f"Extracting anchor from already-scraped page: {href_with_fragment}")
                             self._scrape_site(href_with_fragment, rooturl)
                             time.sleep(1)
                     else:
@@ -850,13 +922,14 @@ class YeehaaScraper:
                     # Mark both versions as scraped
                     self.scraped_urls[href_without_fragment] = True
                     self.scraped_urls[href_with_fragment] = True
-                    
-                    # If extract_anchors is enabled and there's a fragment, scrape the anchored version
+
+                    # If extract_anchors is enabled and there's a fragment,
+                    # scrape the anchored version
                     if self.extract_anchors and o.fragment:
                         self._scrape_site(href_with_fragment, rooturl)
                     else:
                         self._scrape_site(href_without_fragment, rooturl)
-                    time.sleep(1) # Be nice
+                    time.sleep(1)  # Be nice
             except Exception as e:
                 self.scraped_urls[href] = True
                 print("Exception on url " + str(href))
@@ -865,7 +938,8 @@ class YeehaaScraper:
                 else:
                     print(e)
                 continue
-        self.rec_depth = self.rec_depth -1
+        self.rec_depth = self.rec_depth - 1
+
 
 def get_credentials():
     """Get credentials from environment variables or config file"""
@@ -873,7 +947,7 @@ def get_credentials():
     username = os.getenv('SCRAPER_USERNAME')
     password = os.getenv('SCRAPER_PASSWORD')
     totp_secret = os.getenv('SCRAPER_TOTP_SECRET')
-    
+
     # If env vars not found, try config file
     if not all([username, password, totp_secret]):
         config_file = 'scraper_config.json'
@@ -891,7 +965,7 @@ def get_credentials():
             # Create example config file
             example_config = {
                 "username": "your_username",
-                "password": "your_password", 
+                "password": "your_password",
                 "totp_secret": "your_totp_secret_key",
                 "login_url": "https://systems-overview.pages.met.no/login",
                 "username_field": "username",
@@ -902,7 +976,7 @@ def get_credentials():
                 json.dump(example_config, f, indent=4)
             print(f"Created example config file: scraper_config.example.json")
             print("Please copy it to scraper_config.json and fill in your credentials")
-    
+
     if not all([username, password, totp_secret]):
         print("Error: Missing credentials!")
         print("Set environment variables:")
@@ -911,19 +985,20 @@ def get_credentials():
         print("  export SCRAPER_TOTP_SECRET='your_totp_secret'")
         print("Or create scraper_config.json with your credentials")
         sys.exit(1)
-        
+
     return username, password, totp_secret
+
 
 def load_config():
     """Load additional configuration from file or use defaults"""
     config_file = 'scraper_config.json'
     default_config = {
         "login_url": "https://systems-overview.pages.met.no/login",
-        "username_field": "username", 
+        "username_field": "username",
         "password_field": "password",
         "totp_field": "totp"
     }
-    
+
     if os.path.exists(config_file):
         try:
             with open(config_file, 'r') as f:
@@ -934,61 +1009,67 @@ def load_config():
                         default_config[key] = value
         except Exception as e:
             print(f"Error reading config file: {e}")
-    
+
     return default_config
 
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Web scraper with configurable options")
-     # Mandatory URL parameter
+    parser = argparse.ArgumentParser(
+        description="Web scraper with configurable options")
+    # Mandatory URL parameter
     parser.add_argument(
-        '--scrape-url', 
-        required=True, 
+        '--scrape-url',
+        required=True,
         help='URL to scrape (mandatory)'
     )
-    
+
     # Optional output directory with dynamic default
     parser.add_argument(
-        '--output-dir', 
+        '--output-dir',
         default=None,
         help='Output directory (default: host_datetime)'
     )
-    
+
     # Optional one-page-only flag
     parser.add_argument(
-        '--one-page-only', 
+        '--one-page-only',
         action='store_true',
         default=False,
         help='Scrape only one page (default: False)'
     )
-    parser.add_argument('--convert-to-markdown', action='store_true', help='Convert HTML pages to Markdown (.md)')
-    parser.add_argument('--extract-anchors', action='store_true', help='Extract anchor sections into separate files')
-    
+    parser.add_argument(
+        '--convert-to-markdown',
+        action='store_true',
+        help='Convert HTML pages to Markdown (.md)')
+    parser.add_argument(
+        '--extract-anchors',
+        action='store_true',
+        help='Extract anchor sections into separate files')
+
     args = parser.parse_args()
-    
-     # Set default output directory if not provided
+
+    # Set default output directory if not provided
     if args.output_dir is None:
         args.output_dir = create_output_dir(args.scrape_url)
-    
-   
-    
+
     print(f"Scraping URL: {args.scrape_url}")
     print(f"Output directory: {args.output_dir}")
     print(f"One page only: {args.one_page_only}")
     print(f"Convert to markdown: {args.convert_to_markdown}")
     print(f"Extract anchors: {args.extract_anchors}")
     print("-" * 50)
-    
+
     # Get credentials automatically
     username, password, totp_secret = get_credentials()
-    
+
     # Load additional configuration
     config = load_config()
-    
+
     scraper = YeehaaScraper([
-        #'https://systems-overview.pages.met.no/systems-overview/'
-        #'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
+        # 'https://systems-overview.pages.met.no/systems-overview/'
+        # 'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
         args.scrape_url
-    ], 
+    ],
         skip_patterns=['dokit-dump', '.rst.txt'],
         scraped_dir=args.output_dir,
         one_page_only=args.one_page_only,
