@@ -707,7 +707,7 @@ class YeehaaScraper:
         print("Scraping " + urlen)
         self.rec_depth = self.rec_depth + 1
         self.navigate(urlen)
-        time.sleep(2)  # Give time to render ..
+        time.sleep(10)  # Give time to render ..
 
         o = urlparse(urlen)
 
