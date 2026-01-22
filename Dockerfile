@@ -1,42 +1,65 @@
-# Copyright 2022 met.no. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ============================================================================
+FROM ubuntu:24.04
 
-FROM registry.met.no/baseimg/ubuntu:24.04 
+# Avoid prompts from apt
+ENV DEBIAN_FRONTEND=noninteractive
 
+# Update and install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    unzip \
+    python3 \
+    python3-pip \
+    python3.12-venv\
+    curl\
+    && rm -rf /var/lib/apt/lists/*
 
-ARG DEBIAN_FRONTEND=noninteractive
+# Install Google Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get -yy install --no-install-recommends \
-    apt-utils python3 python3-dev python3-pip python3-setuptools python3-venv wget libatk1.0-0 libcairo2 libcups2 libfontconfig1 libgdk-pixbuf2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libxss1 fonts-liberation libnss3 lsb-release xdg-utils
+# Install matching ChromeDriver for Chrome 115+
+# Using the new Chrome for Testing endpoints
+RUN CHROME_MAJOR_VERSION=$(google-chrome --version | sed -E 's/.* ([0-9]+)(\.[0-9]+){3}.*/\1/') \
+    && echo "Chrome major version: $CHROME_MAJOR_VERSION" \
+    && CHROMEDRIVER_VERSION=$(wget -qO- "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${CHROME_MAJOR_VERSION}") \
+    && echo "ChromeDriver version: $CHROMEDRIVER_VERSION" \
+    && wget -q -O /tmp/chromedriver-linux64.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip" \
+    && unzip -j /tmp/chromedriver-linux64.zip chromedriver-linux64/chromedriver -d /usr/local/bin/ \
+    && rm /tmp/chromedriver-linux64.zip \
+    && chmod +x /usr/local/bin/chromedriver \
+    && chromedriver --version
 
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-RUN dpkg -i google-chrome-stable_current_amd64.deb; apt-get -fy install
+# Install Selenium for testing
+#RUN pip3 install selenium --break-system-packages
 
-ENV VIRTUAL_ENV=/opt/venv
+ARG SCRAPER_USERNAME
+ARG SCRAPER_PASSWORD
+ARG SCRAPER_TOTP_SECRET
+
+ENV SCRAPER_USERNAME=$SCRAPER_USERNAME
+ENV SCRAPER_PASSWORD=$SCRAPER_PASSWORD
+ENV SCRAPER_TOTP_SECRET=$SCRAPER_TOTP_SECRET
+
+ENV VIRTUAL_ENV=/app/venv
 RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PATH="$VIRTUAL_ENV/bin:/app:$PATH"
 
 RUN python3 -m pip install --upgrade pip
 
-RUN pip install requests==2.32.3
-RUN pip install tldextract==5.1.3
-RUN pip install bs4==0.0.2
-RUN pip install selenium==4.30.0
-RUN pip install langdetect==1.0.9
-RUN pip install webdriver_manager
-RUN pip install pyotp
-RUN pip install markdownify
-RUN pip install python-dateutil
+#RUN mkdir -p /app
+WORKDIR /app
+COPY requirements.txt .
+COPY scraper_config.json .
+COPY yeehaa_scraper.py .
+RUN pip install -r requirements.txt
 
+
+# Set display port to avoid crash
+ENV DISPLAY=:99
+
+CMD ["/bin/bash"]

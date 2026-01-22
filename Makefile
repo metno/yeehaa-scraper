@@ -1,11 +1,11 @@
 
 dockerimg:
-	/usr/bin/docker build  --no-cache -t="registry.met.no/modellprod/yeehaa-container:latest" .
+	/usr/bin/docker build  -t="registry.met.no/modellprod/yeehaa-container:latest" --build-arg SCRAPER_USERNAME=$(SCRAPER_USERNAME) --build-arg SCRAPER_PASSWORD=$(SCRAPER_PASSWORD) --build-arg SCRAPER_TOTP_SECRET=$(SCRAPER_TOTP_SECRET) .
 dockerrun:
-	docker run -v /lustre:/lustre -v $(PWD):$(PWD) -i -t registry.met.no/modellprod/yeehaa-container:latest /bin/bash
+	docker run -v $(PWD):$(PWD) -i -t registry.met.no/modellprod/yeehaa-container:latest /bin/bash
 
 sif: dockerimg
-	sudo singularity build mmd-container-latest.sif docker-daemon://registry.met.no/modellprod/yeehaa-container:latest		
+	sudo singularity build yeehaa-container-latest.sif docker-daemon://registry.met.no/modellprod/yeehaa-container:latest		
 
 sifshell:
-	MET_WORKDIR=/tmp singularity exec --bind /lustre:/lustre/,$(HOME):$(HOME) mmd-container-latest.sif /bin/bash
+	MET_WORKDIR=/tmp singularity exec yeehaa-container-latest.sif /bin/bash
