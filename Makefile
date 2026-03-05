@@ -1,6 +1,9 @@
 
 dockerimg:
-	/usr/bin/docker build  -t="registry.met.no/modellprod/yeehaa-container:latest" --build-arg SCRAPER_USERNAME=$(SCRAPER_USERNAME) --build-arg SCRAPER_PASSWORD=$(SCRAPER_PASSWORD) --build-arg SCRAPER_TOTP_SECRET=$(SCRAPER_TOTP_SECRET) .
+	docker build  -t="registry.met.no/modellprod/yeehaa-container:latest" --build-arg SCRAPER_USERNAME=$(SCRAPER_USERNAME) --build-arg SCRAPER_PASSWORD=$(SCRAPER_PASSWORD) --build-arg SCRAPER_TOTP_SECRET=$(SCRAPER_TOTP_SECRET) .
+rhelimg:
+	docker build  -f Dockerfile.rhel8.10 -t="registry.met.no/modellprod/yeehaa-container-rhel:latest" --build-arg SCRAPER_USERNAME=$(SCRAPER_USERNAME) --build-arg SCRAPER_PASSWORD=$(SCRAPER_PASSWORD) --build-arg SCRAPER_TOTP_SECRET=$(SCRAPER_TOTP_SECRET) .
+
 dockerrun:
 	docker run -v $(PWD):$(PWD) -i -t registry.met.no/modellprod/yeehaa-container:latest /bin/bash
 

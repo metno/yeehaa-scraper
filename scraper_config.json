@@ -1,5 +1,5 @@
 {
-    "login_url": "https://systems-overview.pages.met.no/login",
+    "login_url": "https://tjenesteoversikt.met.no",
     "username_field": "username",
     "password_field": "password",
     "totp_field": "otp"
