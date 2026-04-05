@@ -658,7 +658,7 @@ class YeehaaScraper:
         with open(self.meta_file, 'w+', encoding='utf-8') as fp:
             json.dump(self.metadata, fp, indent=4)
 
-    def _scrape_site(self, urlen, rooturl) -> None:
+    def _scrape_site(self, urlen, rooturl, referer_url=None) -> None:
 
         for pattern in self.skip_patterns:  # TODO: Use regex
             if pattern in urlen:
@@ -731,6 +731,7 @@ class YeehaaScraper:
                     elm['url'] = urlen
                     elm['file_name'] = file_name_with_anchor
                     elm['doc_type'] = doc_type
+                    elm['referer_url'] = referer_url
                     if fragment:
                         elm['anchor'] = fragment
                     # Non-HTML files don't have parseable dates
@@ -840,6 +841,7 @@ class YeehaaScraper:
         elm['file_name'] = file_name_with_anchor
         elm['doc_type'] = doc_type
         elm['date'] = last_updated  # Add the extracted date
+        elm['referer_url'] = referer_url
         if fragment:
             elm['anchor'] = fragment
 
@@ -914,7 +916,7 @@ class YeehaaScraper:
                             self.scraped_urls[href_with_fragment] = True
                             print(
                                 f"Extracting anchor from already-scraped page: {href_with_fragment}")
-                            self._scrape_site(href_with_fragment, rooturl)
+                            self._scrape_site(href_with_fragment, rooturl, referer_url=urlen)
                             time.sleep(1)
                     else:
                         # Mark as scraped and skip
@@ -928,9 +930,9 @@ class YeehaaScraper:
                     # If extract_anchors is enabled and there's a fragment,
                     # scrape the anchored version
                     if self.extract_anchors and o.fragment:
-                        self._scrape_site(href_with_fragment, rooturl)
+                        self._scrape_site(href_with_fragment, rooturl, referer_url=urlen)
                     else:
-                        self._scrape_site(href_without_fragment, rooturl)
+                        self._scrape_site(href_without_fragment, rooturl, referer_url=urlen)
                     time.sleep(1)  # Be nice
             except Exception as e:
                 self.scraped_urls[href] = True
