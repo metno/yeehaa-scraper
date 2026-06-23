@@ -154,7 +154,9 @@ def extract_last_updated_date(html_content):
                             temp_date_str = f"{day} {month_str} {year}"
                             parsed_date = date_parser.parse(temp_date_str)
                             return parsed_date.strftime('%Y-%m-%d')
-                        except BaseException:
+                        except BaseException as e:
+                            print(f"  [selector miss] {selector_type}='{
+                                  selector}': {e}", file=sys.stderr)
                             continue
 
                     # Construct ISO date for Norwegian format
@@ -188,7 +190,9 @@ def extract_last_updated_date(html_content):
                 # Try to parse the content
                 parsed_date = date_parser.parse(content)
                 return parsed_date.strftime('%Y-%m-%d')
-            except BaseException:
+            except BaseException as e:
+                print(f"  [selector miss] {selector_type}='{
+                      selector}': {e}", file=sys.stderr)
                 continue
 
     return None
@@ -242,8 +246,8 @@ class YeehaaScraper:
         self.options.add_argument("--headless=new")  # for Chrome >= 109
         self.options.add_argument("--disable-dev-shm-usage")
         ser = Service("/snap/bin/chromium.chromedriver")
-        #ser = Service("/usr/local/bin/chromedriver")
-       
+        # ser = Service("/usr/local/bin/chromedriver")
+
         self.driver = webdriver.Chrome(service=ser, options=self.options)
 
         self.scraped_urls = {}
@@ -366,7 +370,9 @@ class YeehaaScraper:
                     print(f"Found password field using: {
                           selector_type}, {selector}")
                     break
-                except BaseException:
+                except BaseException as e:
+                    print(f"  [selector miss] {selector_type}='{
+                          selector}': {e}", file=sys.stderr)
                     continue
 
             if not password_input:
@@ -385,6 +391,8 @@ class YeehaaScraper:
             # Look for TOTP field - try multiple strategies
             totp_input = None
             totp_selectors = [
+                (By.NAME, 'otp'),                        # Keycloak default
+                (By.ID, 'otp'),
                 (By.NAME, self.totp_field),
                 (By.ID, self.totp_field),
                 (By.NAME, 'totp'),
@@ -395,7 +403,7 @@ class YeehaaScraper:
                 (By.ID, 'totp'),
                 (By.ID, 'code'),
                 (By.ID, 'token'),
-                (By.XPATH, '//input[@placeholder="Code" or @placeholder="TOTP" or @placeholder="Authentication Code"]')
+                (By.XPATH, '//input[@placeholder="Code" or @placeholder="TOTP" or @placeholder="Authentication Code" or @placeholder="One-time code"]')
             ]
 
             # First, try to find TOTP field on current page
@@ -406,7 +414,8 @@ class YeehaaScraper:
                     print(f"Found TOTP field using: {
                           selector_type}, {selector}")
                     break
-                except BaseException:
+                except BaseException as e:
+                    # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if totp_input:
@@ -421,11 +430,14 @@ class YeehaaScraper:
                 # Find and click submit button
                 submit_button = None
                 submit_selectors = [
+                    # Keycloak uses <button>, not <input>
+                    (By.CSS_SELECTOR, 'button[type="submit"]'),
                     (By.CSS_SELECTOR, self.submit_button_selector),
                     (By.CSS_SELECTOR, 'input[type="submit"]'),
-                    (By.CSS_SELECTOR, 'button[type="submit"]'),
-                    (By.XPATH, '//button[contains(text(), "Login") or contains(text(), "Sign in") or contains(text(), "Submit")]'),
-                    (By.XPATH, '//input[@value="Login" or @value="Sign in" or @value="Submit"]')
+                    (By.XPATH,
+                     '//button[contains(text(), "Sign In") or contains(text(), "Login") or contains(text(), "Submit")]'),
+                    (By.XPATH,
+                     '//input[@value="Login" or @value="Sign in" or @value="Submit"]')
                 ]
 
                 for selector_type, selector in submit_selectors:
@@ -435,7 +447,8 @@ class YeehaaScraper:
                         print(f"Found submit button using: {
                               selector_type}, {selector}")
                         break
-                    except BaseException:
+                    except BaseException as e:
+                        # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                         continue
 
                 if not submit_button:
@@ -443,7 +456,12 @@ class YeehaaScraper:
                     return False
 
                 submit_button.click()
-                time.sleep(3)  # Wait for potential redirect/new page
+                try:
+                    wait.until(
+                        EC.presence_of_element_located(
+                            (By.TAG_NAME, 'input')))
+                except TimeoutException:
+                    pass
 
                 print("=== PAGE AFTER FIRST SUBMIT ===")
                 self.debug_page_elements()
@@ -486,7 +504,8 @@ class YeehaaScraper:
                     print(f"Found final submit button using: {
                           selector_type}, {selector}")
                     break
-                except BaseException:
+                except BaseException as e:
+                    # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if final_submit:
@@ -916,7 +935,8 @@ class YeehaaScraper:
                             self.scraped_urls[href_with_fragment] = True
                             print(
                                 f"Extracting anchor from already-scraped page: {href_with_fragment}")
-                            self._scrape_site(href_with_fragment, rooturl, referer_url=urlen)
+                            self._scrape_site(
+                                href_with_fragment, rooturl, referer_url=urlen)
                             time.sleep(1)
                     else:
                         # Mark as scraped and skip
@@ -930,9 +950,11 @@ class YeehaaScraper:
                     # If extract_anchors is enabled and there's a fragment,
                     # scrape the anchored version
                     if self.extract_anchors and o.fragment:
-                        self._scrape_site(href_with_fragment, rooturl, referer_url=urlen)
+                        self._scrape_site(
+                            href_with_fragment, rooturl, referer_url=urlen)
                     else:
-                        self._scrape_site(href_without_fragment, rooturl, referer_url=urlen)
+                        self._scrape_site(
+                            href_without_fragment, rooturl, referer_url=urlen)
                     time.sleep(1)  # Be nice
             except Exception as e:
                 self.scraped_urls[href] = True
