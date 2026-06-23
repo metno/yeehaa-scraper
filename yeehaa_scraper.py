@@ -155,8 +155,8 @@ def extract_last_updated_date(html_content):
                             parsed_date = date_parser.parse(temp_date_str)
                             return parsed_date.strftime('%Y-%m-%d')
                         except BaseException as e:
-                            print(f"  [selector miss] {selector_type}='{
-                                  selector}': {e}", file=sys.stderr)
+                            #print(f"  [selector miss] {selector_type}='{
+                            #      selector}': {e}", file=sys.stderr)
                             continue
 
                     # Construct ISO date for Norwegian format
@@ -191,8 +191,8 @@ def extract_last_updated_date(html_content):
                 parsed_date = date_parser.parse(content)
                 return parsed_date.strftime('%Y-%m-%d')
             except BaseException as e:
-                print(f"  [selector miss] {selector_type}='{
-                      selector}': {e}", file=sys.stderr)
+                #print(f"  [selector miss] {selector_type}='{
+                #      selector}': {e}", file=sys.stderr)
                 continue
 
     return None
@@ -383,8 +383,8 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    print(f"  [selector miss] {selector_type}='{
-                          selector}': {e}", file=sys.stderr)
+                    #print(f"  [selector miss] {selector_type}='{
+                    #      selector}': {e}", file=sys.stderr)
                     continue
 
             if not password_input:
@@ -427,7 +427,7 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                    #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if totp_input:
@@ -460,7 +460,7 @@ class YeehaaScraper:
                               selector_type}, {selector}")
                         break
                     except BaseException as e:
-                        print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                        #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                         continue
 
                 if not submit_button:
@@ -517,7 +517,7 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                    #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if final_submit:
