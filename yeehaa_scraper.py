@@ -415,7 +415,7 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                    print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if totp_input:
@@ -448,7 +448,7 @@ class YeehaaScraper:
                               selector_type}, {selector}")
                         break
                     except BaseException as e:
-                        # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                        print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                         continue
 
                 if not submit_button:
@@ -505,7 +505,7 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    # print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
+                    print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if final_submit:
