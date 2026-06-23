@@ -312,6 +312,18 @@ class YeehaaScraper:
             print("Starting authentication process...")
             self.driver.get(self.login_url)
             time.sleep(3)  # Wait for page to load
+            # Detect blocked/unreachable page before attempting anything
+            page_source = self.driver.page_source
+            if len(page_source.strip()) < 200 or self.driver.title == "":
+                print(
+                    f"ERROR: Page appears blank or unreachable — current URL: {self.driver.current_url}\n"
+                    f"  Page title: '{self.driver.title}'\n"
+                    f"  Page source length: {len(page_source)} bytes\n"
+                    f"  Possible causes: network/firewall block, VPN required, site down.\n"
+                    f"  Skipping authentication.",
+                    file=sys.stderr
+                )
+                return False
 
             # Debug: Show what we found on the page
             print("=== PAGE DEBUG INFO ===")
