@@ -245,7 +245,9 @@ class YeehaaScraper:
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--headless=new")  # for Chrome >= 109
         self.options.add_argument("--disable-dev-shm-usage")
-        ser = Service("/snap/bin/chromium.chromedriver")
+        
+        driver_path = os.environ.get("WEB_DRIVER_PATH", "/snap/bin/chromium.chromedriver")
+        ser = Service(driver_path)
         # ser = Service("/usr/local/bin/chromedriver")
 
         self.driver = webdriver.Chrome(service=ser, options=self.options)
