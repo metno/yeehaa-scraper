@@ -155,8 +155,6 @@ def extract_last_updated_date(html_content):
                             parsed_date = date_parser.parse(temp_date_str)
                             return parsed_date.strftime('%Y-%m-%d')
                         except BaseException as e:
-                            #print(f"  [selector miss] {selector_type}='{
-                            #      selector}': {e}", file=sys.stderr)
                             continue
 
                     # Construct ISO date for Norwegian format
@@ -191,8 +189,6 @@ def extract_last_updated_date(html_content):
                 parsed_date = date_parser.parse(content)
                 return parsed_date.strftime('%Y-%m-%d')
             except BaseException as e:
-                #print(f"  [selector miss] {selector_type}='{
-                #      selector}': {e}", file=sys.stderr)
                 continue
 
     return None
@@ -218,7 +214,8 @@ class YeehaaScraper:
             totp_field="totp",
             submit_button_selector="input[type='submit']",
             convert_to_markdown=False,
-            extract_anchors=False) -> None:
+            extract_anchors=False,
+            skip_auth=False) -> None:
 
         self.scraped_dir = scraped_dir + "/data"
         self.one_page_only = one_page_only
@@ -226,6 +223,7 @@ class YeehaaScraper:
         self.skip_patterns = skip_patterns
         self.convert_to_markdown = convert_to_markdown
         self.extract_anchors = extract_anchors
+        self.skip_auth = skip_auth
 
         # Authentication parameters
         self.username = username
@@ -237,18 +235,15 @@ class YeehaaScraper:
         self.totp_field = totp_field
         self.submit_button_selector = submit_button_selector
 
-        # self.options = FirefoxOptions()
-        # self.options.add_argument("--headless")
-        # self.driver = webdriver.Firefox(options=self.options)
-
         self.options = Options()
         self.options.add_argument("--no-sandbox")
         self.options.add_argument("--headless=new")  # for Chrome >= 109
         self.options.add_argument("--disable-dev-shm-usage")
-        
-        driver_path = os.environ.get("WEB_DRIVER_PATH", "/snap/bin/chromium.chromedriver")
+
+        driver_path = os.environ.get(
+            "WEB_DRIVER_PATH",
+            "/snap/bin/chromium.chromedriver")
         ser = Service(driver_path)
-        # ser = Service("/usr/local/bin/chromedriver")
 
         self.driver = webdriver.Chrome(service=ser, options=self.options)
 
@@ -313,7 +308,7 @@ class YeehaaScraper:
         try:
             print("Starting authentication process...")
             self.driver.get(self.login_url)
-            time.sleep(3)  # Wait for page to load
+            time.sleep(2)  # Wait for page to load
             # Detect blocked/unreachable page before attempting anything
             page_source = self.driver.page_source
             if len(page_source.strip()) < 200 or self.driver.title == "":
@@ -385,8 +380,6 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    #print(f"  [selector miss] {selector_type}='{
-                    #      selector}': {e}", file=sys.stderr)
                     continue
 
             if not password_input:
@@ -429,7 +422,6 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if totp_input:
@@ -462,7 +454,6 @@ class YeehaaScraper:
                               selector_type}, {selector}")
                         break
                     except BaseException as e:
-                        #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                         continue
 
                 if not submit_button:
@@ -519,7 +510,6 @@ class YeehaaScraper:
                           selector_type}, {selector}")
                     break
                 except BaseException as e:
-                    #print(f"  [selector miss] {selector_type}='{selector}': {e}", file=sys.stderr)
                     continue
 
             if final_submit:
@@ -530,7 +520,7 @@ class YeehaaScraper:
                     "Warning: Could not find final submit button, authentication may be incomplete")
 
             # Wait for authentication to complete
-            time.sleep(5)
+            time.sleep(2)
 
             # Check if authentication was successful
             current_url = self.driver.current_url
@@ -564,7 +554,7 @@ class YeehaaScraper:
 
     def navigate(self, target) -> None:
         """Navigate to target URL, authenticating if necessary"""
-        if not self.authenticated and self.login_url:
+        if not self.skip_auth and not self.authenticated and self.login_url:
             if not self.authenticate():
                 print("Authentication failed, continuing without auth...")
 
@@ -951,7 +941,6 @@ class YeehaaScraper:
                                 f"Extracting anchor from already-scraped page: {href_with_fragment}")
                             self._scrape_site(
                                 href_with_fragment, rooturl, referer_url=urlen)
-                            time.sleep(1)
                     else:
                         # Mark as scraped and skip
                         self.scraped_urls[href_with_fragment] = True
@@ -969,7 +958,8 @@ class YeehaaScraper:
                     else:
                         self._scrape_site(
                             href_without_fragment, rooturl, referer_url=urlen)
-                    time.sleep(1)  # Be nice
+                    # time.sleep(1)  # Be nice . Don't be nice. We are sleeping
+                    # enouht already
             except Exception as e:
                 self.scraped_urls[href] = True
                 print("Exception on url " + str(href))
@@ -1007,7 +997,7 @@ def get_credentials():
                 "username": "your_username",
                 "password": "your_password",
                 "totp_secret": "your_totp_secret_key",
-                "login_url": "https://systems-overview.pages.met.no/login",
+               #"login_url": "https://systems-overview.pages.met.no/login",
                 "username_field": "username",
                 "password_field": "password",
                 "totp_field": "totp"
@@ -1033,7 +1023,7 @@ def load_config():
     """Load additional configuration from file or use defaults"""
     config_file = 'scraper_config.json'
     default_config = {
-        "login_url": "https://systems-overview.pages.met.no/login",
+        #"login_url": "https://systems-overview.pages.met.no/login",
         "username_field": "username",
         "password_field": "password",
         "totp_field": "totp"
@@ -1085,6 +1075,11 @@ if __name__ == "__main__":
         '--extract-anchors',
         action='store_true',
         help='Extract anchor sections into separate files')
+    parser.add_argument(
+        '--skip-auth',
+        action='store_true',
+        default=False,
+        help='Skip authentication entirely (default: False)')
 
     args = parser.parse_args()
 
@@ -1097,17 +1092,19 @@ if __name__ == "__main__":
     print(f"One page only: {args.one_page_only}")
     print(f"Convert to markdown: {args.convert_to_markdown}")
     print(f"Extract anchors: {args.extract_anchors}")
+    print(f"Skip auth: {args.skip_auth}")
     print("-" * 50)
 
-    # Get credentials automatically
-    username, password, totp_secret = get_credentials()
+    # Get credentials automatically (skipped if --skip-auth)
+    if args.skip_auth:
+        username, password, totp_secret = None, None, None
+    else:
+        username, password, totp_secret = get_credentials()
 
     # Load additional configuration
     config = load_config()
 
     scraper = YeehaaScraper([
-        # 'https://systems-overview.pages.met.no/systems-overview/'
-        # 'https://it.pages.met.no/infra/brukerdokumentasjon/ppi.html'
         args.scrape_url
     ],
         skip_patterns=['dokit-dump', '.rst.txt'],
@@ -1116,12 +1113,13 @@ if __name__ == "__main__":
         username=username,
         password=password,
         totp_secret=totp_secret,
-        login_url=config['login_url'],
+        login_url=None if args.skip_auth else config.get('login_url', args.scrape_url),
         username_field=config['username_field'],
         password_field=config['password_field'],
         totp_field=config['totp_field'],
         convert_to_markdown=args.convert_to_markdown,
-        extract_anchors=args.extract_anchors
+        extract_anchors=args.extract_anchors,
+        skip_auth=args.skip_auth
     )
 
     scraper.scrape_sites()
